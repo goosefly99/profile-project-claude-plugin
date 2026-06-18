@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -84,7 +84,7 @@ def write_init_stamp(
     tree.mkdir(parents=True, exist_ok=True)
     stamp = InitStamp(
         schema_version=schema_version,
-        initialized_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        initialized_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         project_root=str(root.resolve()),
         config_path=str(config_path.resolve()),
     )
@@ -121,3 +121,40 @@ def detect_root_move(root: Path) -> tuple[bool, str | None]:
     if stamp is None:
         return (False, None)
     return (stamp.project_root != str(root), stamp.project_root)
+
+
+def not_initialized_error(resolved_root: Path) -> dict[str, object]:
+    """Structured `not_initialized` envelope (spec §6b.3). Non-destructive."""
+    return {
+        "ok": False,
+        "error": {
+            "code": "not_initialized",
+            "message": (
+                "profile-project is not initialized for this project. "
+                "Run /profile-project:init first."
+            ),
+            "retriable": False,
+            "resolved_root": str(resolved_root),
+            "remedy": "/profile-project:init",
+        },
+    }
+
+
+def project_root_moved_error(
+    stamped_root: str, resolved_root: Path
+) -> dict[str, object]:
+    """Structured `project_root_moved` envelope (spec §6b.7). Non-destructive."""
+    return {
+        "ok": False,
+        "error": {
+            "code": "project_root_moved",
+            "message": (
+                "This project was initialized for a different root. "
+                "Re-run /profile-project:init."
+            ),
+            "stamped_root": stamped_root,
+            "resolved_root": str(resolved_root),
+            "retriable": False,
+            "remedy": "/profile-project:init --reinit",
+        },
+    }

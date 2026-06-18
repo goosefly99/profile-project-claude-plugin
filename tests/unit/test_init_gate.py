@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from profile_project.config.init_gate import (
     CONFIG_FILENAME,
@@ -12,6 +13,13 @@ from profile_project.config.init_gate import (
     STAMP_SCHEMA_VERSION,
     SUPPORTED_STAMP_SCHEMA_VERSIONS,
     InitStamp,
+    detect_root_move,
+    is_initialized,
+    not_initialized_error,
+    project_root_moved_error,
+    read_stamp,
+    resolve_project_root,
+    write_init_stamp,
 )
 
 
@@ -32,7 +40,7 @@ def test_init_stamp_round_trips_and_forbids_extra() -> None:
     )
     assert stamp.schema_version == 1
     assert stamp.project_root == "/abs/path/to/project"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         InitStamp.model_validate(
             {
                 "schema_version": 1,
@@ -42,9 +50,6 @@ def test_init_stamp_round_trips_and_forbids_extra() -> None:
                 "unexpected": "boom",
             }
         )
-
-
-from profile_project.config.init_gate import resolve_project_root
 
 
 def test_resolve_project_root_prefers_settings_then_env_chain(
@@ -84,9 +89,6 @@ def test_resolve_project_root_falls_back_to_cwd(
     assert resolve_project_root(None) == tmp_path.resolve()
 
 
-from profile_project.config.init_gate import read_stamp
-
-
 def _write_stamp(root: Path, **overrides: object) -> Path:
     tree = root / STAMP_DIRNAME
     tree.mkdir(parents=True, exist_ok=True)
@@ -119,9 +121,6 @@ def test_read_stamp_parses_valid_stamp(tmp_path: Path) -> None:
     assert stamp is not None
     assert stamp.schema_version == 1
     assert stamp.project_root == str(tmp_path)
-
-
-from profile_project.config.init_gate import write_init_stamp
 
 
 def test_write_init_stamp_creates_tree_and_round_trips(tmp_path: Path) -> None:
@@ -158,9 +157,6 @@ def test_write_init_stamp_honors_schema_version_kwarg(tmp_path: Path) -> None:
     assert stamp.schema_version == 1
 
 
-from profile_project.config.init_gate import is_initialized
-
-
 def test_is_initialized_false_when_uninitialized_and_leaves_no_residue(
     tmp_path: Path,
 ) -> None:
@@ -193,9 +189,6 @@ def test_is_initialized_false_on_root_mismatch(tmp_path: Path) -> None:
     assert is_initialized(tmp_path) is False
 
 
-from profile_project.config.init_gate import detect_root_move
-
-
 def test_detect_root_move_no_stamp(tmp_path: Path) -> None:
     moved, stamped = detect_root_move(tmp_path)
     assert moved is False
@@ -214,3 +207,27 @@ def test_detect_root_move_detects_mismatch(tmp_path: Path) -> None:
     moved, stamped = detect_root_move(tmp_path)
     assert moved is True
     assert stamped == "/old/abs/path"
+
+
+def test_not_initialized_error_shape(tmp_path: Path) -> None:
+    env = not_initialized_error(tmp_path)
+    assert env["ok"] is False
+    err = env["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "not_initialized"
+    assert err["retriable"] is False
+    assert err["resolved_root"] == str(tmp_path)
+    assert err["remedy"] == "/profile-project:init"
+    assert "Run /profile-project:init first." in err["message"]
+
+
+def test_project_root_moved_error_shape(tmp_path: Path) -> None:
+    env = project_root_moved_error("/old/abs/path", tmp_path)
+    assert env["ok"] is False
+    err = env["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "project_root_moved"
+    assert err["stamped_root"] == "/old/abs/path"
+    assert err["resolved_root"] == str(tmp_path)
+    assert err["retriable"] is False
+    assert err["remedy"] == "/profile-project:init --reinit"
