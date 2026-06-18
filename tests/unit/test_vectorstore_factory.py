@@ -79,6 +79,13 @@ def test_build_backend_returns_none_when_disabled() -> None:
     assert build_backend(s) is None
 
 
+def test_build_backend_returns_none_when_backend_disabled_but_enabled() -> None:
+    # The backend="disabled" guard must fire on its own, independent of the
+    # master enabled switch (which is True here so it cannot short-circuit first).
+    s = Settings(vectorstore=VectorStoreSettings(backend="disabled", enabled=True))
+    assert build_backend(s) is None
+
+
 def test_build_backend_returns_none_on_conflict_disable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
