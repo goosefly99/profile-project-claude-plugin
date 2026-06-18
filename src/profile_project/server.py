@@ -19,6 +19,9 @@ def configure_logging() -> None:
     Idempotent: a tagged StreamHandler(sys.stderr) is installed at most once.
     """
     root = logging.getLogger()
+    # Only this module's own tagged handler is de-duplicated; any pre-existing
+    # foreign StreamHandler(sys.stderr) is intentionally left in place
+    # (stderr is protocol-safe; we do not remove other libraries' handlers).
     already_installed = any(
         getattr(h, "_profile_project_tag", None) == _LOG_HANDLER_TAG
         for h in root.handlers
@@ -33,18 +36,17 @@ def configure_logging() -> None:
         )
         root.addHandler(handler)
         root.setLevel(logging.INFO)
-
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-        ],
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
-    )
+        structlog.configure(
+            processors=[
+                structlog.contextvars.merge_contextvars,
+                structlog.processors.add_log_level,
+                structlog.processors.TimeStamper(fmt="iso", utc=True),
+                structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+            ],
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            wrapper_class=structlog.stdlib.BoundLogger,
+            cache_logger_on_first_use=True,
+        )
 
 
 def register_tools(mcp: FastMCP) -> None:
