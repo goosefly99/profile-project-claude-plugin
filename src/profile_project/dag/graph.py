@@ -153,4 +153,43 @@ EDGES: list[Edge] = [
 
 
 def assert_dag(phases: list[Phase], edges: list[Edge]) -> None:
-    raise NotImplementedError
+    """Validate the fixed graph at startup (§3, §7.3).
+
+    Raises ``ValueError`` on a duplicate phase name, an edge whose source or
+    target is not a declared phase (dangling endpoint), or a cycle (detected
+    via Kahn's algorithm). Returns ``None`` when the graph is a valid DAG.
+    """
+    names: set[str] = set()
+    for phase in phases:
+        if phase.name in names:
+            raise ValueError(f"duplicate phase name: {phase.name!r}")
+        names.add(phase.name)
+
+    indegree: dict[str, int] = {name: 0 for name in names}
+    adjacency: dict[str, list[str]] = {name: [] for name in names}
+    for edge in edges:
+        if edge.src not in names:
+            raise ValueError(
+                f"edge {edge.src!r}->{edge.dst!r} references unknown phase: {edge.src!r}"
+            )
+        if edge.dst not in names:
+            raise ValueError(
+                f"edge {edge.src!r}->{edge.dst!r} references unknown phase: {edge.dst!r}"
+            )
+        adjacency[edge.src].append(edge.dst)
+        indegree[edge.dst] += 1
+
+    # Kahn's algorithm: repeatedly remove zero-indegree nodes.
+    queue: list[str] = [name for name in names if indegree[name] == 0]
+    visited = 0
+    while queue:
+        node = queue.pop()
+        visited += 1
+        for successor in adjacency[node]:
+            indegree[successor] -= 1
+            if indegree[successor] == 0:
+                queue.append(successor)
+
+    if visited != len(names):
+        remaining = sorted(name for name in names if indegree[name] > 0)
+        raise ValueError(f"graph contains a cycle among phases: {remaining}")
