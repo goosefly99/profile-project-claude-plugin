@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from profile_project.dag.run_state import (
     EVENTS_FILENAME,
@@ -13,6 +14,21 @@ from profile_project.dag.run_state import (
     PhaseState,
     PipelineError,
     RunState,
+    append_event,
+    init_run,
+    list_runs,
+    load_run,
+    persist,
+    recover_run,
+    run_dir_for,
+    runs_root_for,
+    utc_now_iso,
+)
+from profile_project.dag.run_state import (
+    EVENTS_FILENAME as _EVENTS_FILENAME,
+)
+from profile_project.dag.run_state import (
+    RUN_STATE_FILENAME as _RUN_STATE_FILENAME,
 )
 
 
@@ -31,7 +47,7 @@ def test_phase_state_defaults_to_pending_and_forbids_extra() -> None:
     assert ps.started_at is None
     assert ps.completed_at is None
     assert ps.error is None
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         PhaseState.model_validate({"phase_name": "x", "bogus": 1})
 
 
@@ -47,7 +63,7 @@ def test_artifact_ref_shape_and_forbids_extra() -> None:
     # to_dict() mirrors model_dump(mode="json")
     assert ref.to_dict() == ref.model_dump(mode="json")
     assert ref.to_dict()["type"] == "source-index"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ArtifactRef.model_validate(
             {
                 "type": "t",
@@ -137,15 +153,14 @@ def test_pipeline_error_carries_a_structured_envelope() -> None:
 
 
 def test_pipeline_error_defaults_and_extra_fields() -> None:
-    err = PipelineError("nope", code="run_state_unanchored", retriable=True, run_id="r1")
+    err = PipelineError(
+        "nope", code="run_state_unanchored", retriable=True, run_id="r1"
+    )
     inner = err.envelope["error"]
     assert isinstance(inner, dict)
     assert inner["remedy"] == ""
     assert inner["retriable"] is True
     assert inner["run_id"] == "r1"
-
-
-from profile_project.dag.run_state import init_run, run_dir_for, runs_root_for
 
 
 def test_runs_root_for_and_run_dir_for(tmp_path: Path) -> None:
@@ -155,7 +170,9 @@ def test_runs_root_for_and_run_dir_for(tmp_path: Path) -> None:
     )
 
 
-def test_init_run_creates_all_phases_pending_when_no_toggles_off(tmp_path: Path) -> None:
+def test_init_run_creates_all_phases_pending_when_no_toggles_off(
+    tmp_path: Path,
+) -> None:
     run_dir = run_dir_for(tmp_path, "run-abc")
     params: dict[str, object] = {
         "include_docs": True,
@@ -180,14 +197,14 @@ def test_init_run_creates_all_phases_pending_when_no_toggles_off(tmp_path: Path)
         "verify_profile",
     ]
     assert all(ph.status == "pending" for ph in state.phases.values())
-    # run_data_dir is anchored to the run dir; config_path points at the project root config
+    # run_data_dir is anchored to run dir; config_path points at the project root config
     assert state.run_data_dir == str(run_dir)
-    assert state.config_path == str(
-        tmp_path / ".profile_project_config.json"
-    )
+    assert state.config_path == str(tmp_path / ".profile_project_config.json")
 
 
-def test_init_run_toggle_skips_each_disabled_branch_at_creation(tmp_path: Path) -> None:
+def test_init_run_toggle_skips_each_disabled_branch_at_creation(
+    tmp_path: Path,
+) -> None:
     run_dir = run_dir_for(tmp_path, "run-skip")
     params: dict[str, object] = {
         "include_docs": False,
@@ -226,22 +243,15 @@ def test_init_run_does_not_write_to_disk(tmp_path: Path) -> None:
     assert not (tmp_path / ".profile_project").exists()
 
 
-from profile_project.dag.run_state import (
-    EVENTS_FILENAME as _EVENTS_FILENAME,
-)
-from profile_project.dag.run_state import (
-    RUN_STATE_FILENAME as _RUN_STATE_FILENAME,
-)
-from profile_project.dag.run_state import append_event, persist, utc_now_iso
-
-
 def test_utc_now_iso_is_zulu_suffixed() -> None:
     stamp = utc_now_iso()
     assert stamp.endswith("Z")
     assert "T" in stamp
 
 
-def test_persist_atomically_writes_run_state_and_bumps_updated_at(tmp_path: Path) -> None:
+def test_persist_atomically_writes_run_state_and_bumps_updated_at(
+    tmp_path: Path,
+) -> None:
     run_dir = run_dir_for(tmp_path, "run-persist")
     state = init_run({}, run_dir)
     original_updated = state.updated_at
@@ -278,7 +288,9 @@ def test_append_event_writes_one_jsonl_line_per_call(tmp_path: Path) -> None:
     run_dir = run_dir_for(tmp_path, "run-events")
     state = init_run({}, run_dir)
     append_event(state, "phase_started", phase="discover_context")
-    append_event(state, "artifact_stored", phase="discover_context", type="source-index")
+    append_event(
+        state, "artifact_stored", phase="discover_context", type="source-index"
+    )
     lines = (run_dir / _EVENTS_FILENAME).read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     first = json.loads(lines[0])
@@ -289,9 +301,6 @@ def test_append_event_writes_one_jsonl_line_per_call(tmp_path: Path) -> None:
     second = json.loads(lines[1])
     assert second["event"] == "artifact_stored"
     assert second["type"] == "source-index"
-
-
-from profile_project.dag.run_state import list_runs, load_run, runs_root_for
 
 
 def test_load_run_round_trips_a_persisted_state(tmp_path: Path) -> None:
@@ -351,10 +360,9 @@ def test_list_runs_missing_root_returns_empty(tmp_path: Path) -> None:
     assert list_runs(runs_root_for(tmp_path)) == []
 
 
-from profile_project.dag.run_state import recover_run
-
-
-def test_recover_run_resets_in_progress_to_pending_with_retry_bump(tmp_path: Path) -> None:
+def test_recover_run_resets_in_progress_to_pending_with_retry_bump(
+    tmp_path: Path,
+) -> None:
     run_dir = run_dir_for(tmp_path, "run-crashed")
     state = init_run({}, run_dir)
     state.status = "running"
@@ -376,7 +384,9 @@ def test_recover_run_resets_in_progress_to_pending_with_retry_bump(tmp_path: Pat
     assert reloaded.phases["analyze_codebase"].retry_count == 1
 
 
-def test_recover_run_reconciles_failed_status_with_no_failed_phase(tmp_path: Path) -> None:
+def test_recover_run_reconciles_failed_status_with_no_failed_phase(
+    tmp_path: Path,
+) -> None:
     run_dir = run_dir_for(tmp_path, "run-mislabeled")
     state = init_run({}, run_dir)
     state.status = "failed"  # stale: no phase is actually failed

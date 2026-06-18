@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -57,7 +57,7 @@ class PipelineError(Exception):
 
 def utc_now_iso() -> str:
     """Current UTC instant as an ISO-8601 ``"...Z"`` string (§7.5 timestamps)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ArtifactRef(BaseModel):
@@ -226,7 +226,10 @@ def load_run(run_dir: Path) -> RunState:
     """
     run_dir = Path(run_dir)
     path = run_dir / RUN_STATE_FILENAME
-    remedy = "Delete the run directory and re-run /profile-project:init, then start a new run."
+    remedy = (
+        "Delete the run directory and re-run /profile-project:init,"
+        " then start a new run."
+    )
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
