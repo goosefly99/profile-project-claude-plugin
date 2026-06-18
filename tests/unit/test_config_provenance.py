@@ -197,6 +197,8 @@ def test_validate_config_hard_fail_forbidden_secret(
     assert result["vectorstore_enabled"] is False
     assert len(result["errors"]) == 1
     assert "openai_api_key" in result["errors"][0]
+    assert "sk-should-never-be-here" not in result["errors"][0]
+    assert "sk-should-never-be-here" not in json.dumps(result)
 
 
 def test_validate_config_hard_fail_unknown_key(
