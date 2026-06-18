@@ -119,3 +119,40 @@ def test_read_stamp_parses_valid_stamp(tmp_path: Path) -> None:
     assert stamp is not None
     assert stamp.schema_version == 1
     assert stamp.project_root == str(tmp_path)
+
+
+from profile_project.config.init_gate import write_init_stamp
+
+
+def test_write_init_stamp_creates_tree_and_round_trips(tmp_path: Path) -> None:
+    config_path = tmp_path / CONFIG_FILENAME
+    stamp_file = write_init_stamp(tmp_path, config_path)
+
+    # Returns the absolute stamp-file path inside the gitignored tree.
+    assert stamp_file == tmp_path / STAMP_DIRNAME / STAMP_FILENAME
+    assert stamp_file.is_file()
+
+    # The written stamp is readable back via the read-only reader.
+    stamp = read_stamp(tmp_path)
+    assert stamp is not None
+    assert stamp.schema_version == STAMP_SCHEMA_VERSION
+    assert stamp.project_root == str(tmp_path.resolve())
+    assert stamp.config_path == str(config_path.resolve())
+    # initialized_at is ISO-8601 UTC (Z suffix).
+    assert stamp.initialized_at.endswith("Z")
+
+    # Persisted JSON has exactly the four stamp fields (extra="forbid").
+    on_disk = json.loads(stamp_file.read_text(encoding="utf-8"))
+    assert set(on_disk) == {
+        "schema_version",
+        "initialized_at",
+        "project_root",
+        "config_path",
+    }
+
+
+def test_write_init_stamp_honors_schema_version_kwarg(tmp_path: Path) -> None:
+    write_init_stamp(tmp_path, tmp_path / CONFIG_FILENAME, schema_version=1)
+    stamp = read_stamp(tmp_path)
+    assert stamp is not None
+    assert stamp.schema_version == 1

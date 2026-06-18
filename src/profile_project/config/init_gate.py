@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from profile_project.config.files import atomic_write_json
 from profile_project.config.settings import CONFIG_FILENAME, Settings
 
 STAMP_SCHEMA_VERSION: int = 1
@@ -62,3 +64,30 @@ def read_stamp(root: Path) -> InitStamp | None:
         return InitStamp.model_validate(data)
     except ValueError:
         return None
+
+
+def write_init_stamp(
+    root: Path, config_path: Path, *, schema_version: int = 1
+) -> Path:
+    """Write the `.profile_project/.initialized` stamp atomically (spec §6b.2).
+
+    This is the **only** mutating function in this module. It creates the
+    gitignored `.profile_project/` tree if absent, then writes the stamp via
+    `atomic_write_json` (temp file + fsync + os.replace, §7.6). Records the
+    resolved absolute `project_root` and `config_path`, a fresh UTC ISO-8601
+    `initialized_at`, and `schema_version`. Returns the stamp-file path.
+
+    Called solely by `pp_init_project` (§6b.8) as one step of its
+    all-or-nothing bootstrap transaction. The gate predicates never call it.
+    """
+    tree = root / STAMP_DIRNAME
+    tree.mkdir(parents=True, exist_ok=True)
+    stamp = InitStamp(
+        schema_version=schema_version,
+        initialized_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        project_root=str(root.resolve()),
+        config_path=str(config_path.resolve()),
+    )
+    stamp_file = tree / STAMP_FILENAME
+    atomic_write_json(stamp_file, stamp.model_dump(mode="json"))
+    return stamp_file
