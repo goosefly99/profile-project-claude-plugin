@@ -57,7 +57,9 @@ def test_pp_list_and_load_artifact_pre_init_returns_empty_none(project: Path) ->
 
 
 def test_pp_store_artifact_gated_pre_init(project: Path) -> None:
-    result = artifact_tools.pp_store_artifact("r1", "discover_context", "source-index", _SOURCE_INDEX)
+    result = artifact_tools.pp_store_artifact(
+        "r1", "discover_context", "source-index", _SOURCE_INDEX
+    )
     assert result["ok"] is False
     assert result["error"]["code"] == "not_initialized"
     assert not (project / ".profile_project").exists()

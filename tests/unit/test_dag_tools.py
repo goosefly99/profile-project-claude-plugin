@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from profile_project.tools import dag_tools
+from profile_project.tools import config_tools, dag_tools
 
 
 @pytest.fixture()
@@ -35,9 +35,6 @@ def test_pp_list_runs_pre_init_returns_empty(uninit_project: Path) -> None:
     result = dag_tools.pp_list_runs()
     assert result == {"ok": True, "runs": []}
     assert not (uninit_project / ".profile_project").exists()
-
-
-from profile_project.tools import config_tools
 
 
 def _init(project: Path) -> None:
@@ -92,7 +89,9 @@ def test_pp_next_phases_offers_entry_then_run_not_found(uninit_project: Path) ->
     assert missing["error"]["code"] == "run_not_found"
 
 
-def test_pp_start_phase_returns_brief_and_marks_in_progress(uninit_project: Path) -> None:
+def test_pp_start_phase_returns_brief_and_marks_in_progress(
+    uninit_project: Path,
+) -> None:
     _init(uninit_project)
     run_id = dag_tools.pp_init_run({})["run_id"]
     brief = dag_tools.pp_start_phase(run_id, "discover_context")
@@ -111,9 +110,7 @@ def test_pp_complete_then_fail_then_retry(uninit_project: Path) -> None:
     dag_tools.pp_start_phase(run_id, "discover_context")
     done = dag_tools.pp_complete_phase(run_id, "discover_context")
     assert done["ok"] is True
-    assert (
-        done["run_state"]["phases"]["discover_context"]["status"] == "completed"
-    )
+    assert done["run_state"]["phases"]["discover_context"]["status"] == "completed"
 
     dag_tools.pp_start_phase(run_id, "analyze_codebase")
     failed = dag_tools.pp_fail_phase(run_id, "analyze_codebase", "boom")
@@ -122,9 +119,7 @@ def test_pp_complete_then_fail_then_retry(uninit_project: Path) -> None:
 
     retried = dag_tools.pp_retry_phase(run_id, "analyze_codebase")
     assert retried["ok"] is True
-    assert (
-        retried["run_state"]["phases"]["analyze_codebase"]["status"] == "pending"
-    )
+    assert retried["run_state"]["phases"]["analyze_codebase"]["status"] == "pending"
 
 
 def test_pp_retry_phase_on_non_failed_errors(uninit_project: Path) -> None:

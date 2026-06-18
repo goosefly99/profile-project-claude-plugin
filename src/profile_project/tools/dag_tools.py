@@ -14,7 +14,13 @@ from profile_project.dag.lifecycle import (
     start_phase,
 )
 from profile_project.dag.resolver import resolve_next_phases
-from profile_project.dag.run_state import RunState, init_run, list_runs, load_run, persist
+from profile_project.dag.run_state import (
+    RunState,
+    init_run,
+    list_runs,
+    load_run,
+    persist,
+)
 from profile_project.tools._envelope import ToolError, require_init, tool_envelope
 
 if TYPE_CHECKING:
