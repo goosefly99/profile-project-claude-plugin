@@ -9,6 +9,32 @@ from profile_project.config.conflicts import (
 )
 from profile_project.config.settings import Settings
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _patch_extras_all_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate all optional extras present so C5 never fires spuriously."""
+    monkeypatch.setattr(
+        "profile_project.config.conflicts._extra_installed",
+        lambda _name: True,
+    )
+
+
+def _patch_extras_missing(
+    monkeypatch: pytest.MonkeyPatch, *missing_modules: str
+) -> None:
+    """Return False for the given module names, True for everything else."""
+    missing = set(missing_modules)
+    monkeypatch.setattr(
+        "profile_project.config.conflicts._extra_installed",
+        lambda name: name not in missing,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Structural test — ConflictWarning NamedTuple shape
+# ---------------------------------------------------------------------------
 
 def test_conflict_warning_is_named_tuple_with_expected_fields() -> None:
     w = ConflictWarning(
@@ -30,7 +56,14 @@ def test_conflict_warning_is_named_tuple_with_expected_fields() -> None:
     )
 
 
-def test_c1_pinecone_missing_key_warns_and_disables() -> None:
+# ---------------------------------------------------------------------------
+# C1 / C1b / C2 — credential-missing conflicts
+# ---------------------------------------------------------------------------
+
+def test_c1_pinecone_missing_key_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "pinecone",  # type: ignore[arg-type]
                      "pinecone": {"index": "my-idx"}},
@@ -41,7 +74,10 @@ def test_c1_pinecone_missing_key_warns_and_disables() -> None:
     assert any("PROFILE_PROJECT_PINECONE_API_KEY" in w for w in warnings)
 
 
-def test_c1b_pinecone_missing_index_warns_and_disables() -> None:
+def test_c1b_pinecone_missing_index_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "pinecone", "pinecone": {}},  # type: ignore[arg-type]
         embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]
@@ -52,7 +88,10 @@ def test_c1b_pinecone_missing_index_warns_and_disables() -> None:
     assert any("existing index ref" in w for w in warnings)
 
 
-def test_c2_openai_missing_key_warns_and_disables() -> None:
+def test_c2_openai_missing_key_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "openai"},  # type: ignore[arg-type]
@@ -63,25 +102,14 @@ def test_c2_openai_missing_key_warns_and_disables() -> None:
     assert any("cannot embed" in w for w in warnings)
 
 
-def test_c5_missing_extra_warns_and_disables(monkeypatch: pytest.MonkeyPatch) -> None:
-    import profile_project.config.conflicts as conflicts_mod
+# ---------------------------------------------------------------------------
+# C3 — Ollama reachability
+# ---------------------------------------------------------------------------
 
-    def fake_find_spec(name: str) -> object | None:
-        return None if name == "chromadb" else object()
-
-    monkeypatch.setattr(
-        conflicts_mod.importlib.util, "find_spec", fake_find_spec  # type: ignore[attr-defined]
-    )
-    s = Settings(
-        vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
-        embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]
-    )
-    warnings, enabled = run_conflict_detection(s)
-    assert enabled is False
-    assert any("chromadb" in w and "not installed" in w for w in warnings)
-
-
-def test_c3_ollama_unreachable_probe_warns_and_disables() -> None:
+def test_c3_ollama_unreachable_probe_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "ollama",  # type: ignore[arg-type]
@@ -99,7 +127,10 @@ def test_c3_ollama_unreachable_probe_warns_and_disables() -> None:
     assert any("ollama" in w and "unreachable" in w for w in warnings)
 
 
-def test_c3_ollama_not_probed_when_no_probe_injected() -> None:
+def test_c3_ollama_not_probed_when_no_probe_injected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "ollama",  # type: ignore[arg-type]
@@ -110,7 +141,14 @@ def test_c3_ollama_not_probed_when_no_probe_injected() -> None:
     assert not any("unreachable" in w for w in warnings)
 
 
-def test_c4_dim_mismatch_warns_and_disables() -> None:
+# ---------------------------------------------------------------------------
+# C4 — Dimension mismatch
+# ---------------------------------------------------------------------------
+
+def test_c4_dim_mismatch_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "pinecone",  # type: ignore[arg-type]
                      "pinecone": {"index": "my-idx",
@@ -129,7 +167,10 @@ def test_c4_dim_mismatch_warns_and_disables() -> None:
     assert any("dimension" in w and "384" in w and "1536" in w for w in warnings)
 
 
-def test_c4_dim_probe_fail_closed_disables() -> None:
+def test_c4_dim_probe_fail_closed_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "pinecone",  # type: ignore[arg-type]
                      "pinecone": {"index": "my-idx",
@@ -147,7 +188,76 @@ def test_c4_dim_probe_fail_closed_disables() -> None:
     assert any("could not be verified" in w for w in warnings)
 
 
-def test_c6_openai_base_url_non_openai_host_warns_keeps_enabled() -> None:
+# ---------------------------------------------------------------------------
+# C5 — Missing python extras (vectorstore backend + embeddings method)
+# ---------------------------------------------------------------------------
+
+def test_c5_missing_store_extra_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_missing(monkeypatch, "chromadb")
+    s = Settings(
+        vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
+        embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]
+    )
+    warnings, enabled = run_conflict_detection(s)
+    assert enabled is False
+    assert any("chromadb" in w and "not installed" in w for w in warnings)
+
+
+def test_c5_missing_embedder_extra_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C5b: sentence-transformers extra absent → warn + disable."""
+    _patch_extras_missing(monkeypatch, "sentence_transformers")
+    s = Settings(
+        vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
+        embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]
+    )
+    warnings, enabled = run_conflict_detection(s)
+    assert enabled is False
+    assert any(
+        "sentence-transformers" in w and "not installed" in w for w in warnings
+    )
+
+
+def test_c5_missing_openai_embedder_extra_warns_and_disables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C5b: openai extra absent (but key is present) → warn + disable."""
+    _patch_extras_missing(monkeypatch, "openai")
+    s = Settings(
+        vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
+        embeddings={"method": "openai"},  # type: ignore[arg-type]
+        openai_api_key="oa-secret",  # type: ignore[arg-type]
+    )
+    warnings, enabled = run_conflict_detection(s)
+    assert enabled is False
+    assert any("openai" in w and "not installed" in w for w in warnings)
+
+
+def test_c5_ollama_embedder_has_no_extra_requirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ollama uses httpx (base dep); no C5 should fire for the embedder."""
+    _patch_extras_all_installed(monkeypatch)
+    s = Settings(
+        vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
+        embeddings={"method": "ollama"},  # type: ignore[arg-type]
+    )
+    warnings, enabled = run_conflict_detection(s)
+    assert enabled is True
+    assert not any("not installed" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# C6 / C7 / C8 / C9 — Advisory (non-disabling) conflicts
+# ---------------------------------------------------------------------------
+
+def test_c6_openai_base_url_non_openai_host_warns_keeps_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "openai",  # type: ignore[arg-type]
@@ -159,7 +269,10 @@ def test_c6_openai_base_url_non_openai_host_warns_keeps_enabled() -> None:
     assert any("base_url" in w and "non-OpenAI" in w for w in warnings)
 
 
-def test_c7_ollama_with_openai_key_warns_keeps_enabled() -> None:
+def test_c7_ollama_with_openai_key_warns_keeps_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "ollama"},  # type: ignore[arg-type]
@@ -170,7 +283,10 @@ def test_c7_ollama_with_openai_key_warns_keeps_enabled() -> None:
     assert any("OpenAI key set but ollama selected" in w for w in warnings)
 
 
-def test_c8_chromadb_with_pinecone_key_warns_keeps_enabled() -> None:
+def test_c8_chromadb_with_pinecone_key_warns_keeps_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]
@@ -181,7 +297,10 @@ def test_c8_chromadb_with_pinecone_key_warns_keeps_enabled() -> None:
     assert any("pinecone key set but chromadb backend" in w for w in warnings)
 
 
-def test_c9_disabled_with_nondefault_vectorstore_config_warns() -> None:
+def test_c9_disabled_with_nondefault_vectorstore_config_warns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": False, "backend": "pinecone",  # type: ignore[arg-type]
                      "pinecone": {"index": "my-idx"}},
@@ -193,7 +312,14 @@ def test_c9_disabled_with_nondefault_vectorstore_config_warns() -> None:
     assert any("dead config" in w for w in warnings)
 
 
-def test_zero_setup_default_no_conflicts_keeps_enabled() -> None:
+# ---------------------------------------------------------------------------
+# Zero-conflict / clean-config paths
+# ---------------------------------------------------------------------------
+
+def test_zero_setup_default_no_conflicts_keeps_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_missing(monkeypatch)  # nothing missing → all extras present
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]
@@ -202,6 +328,10 @@ def test_zero_setup_default_no_conflicts_keeps_enabled() -> None:
     assert enabled is True
     assert warnings == []
 
+
+# ---------------------------------------------------------------------------
+# Field-validation (not conflict matrix)
+# ---------------------------------------------------------------------------
 
 def test_c10_nonpositive_timeout_is_field_validation_error_not_conflict() -> None:
     # C10 is enforced SOLELY by Field(gt=0.0) at field-validation time; it never
@@ -214,7 +344,14 @@ def test_c10_nonpositive_timeout_is_field_validation_error_not_conflict() -> Non
         )
 
 
-def test_settings_stores_conflict_warnings_and_post_enabled() -> None:
+# ---------------------------------------------------------------------------
+# Settings model integration — conflict_warnings / vectorstore_enabled_post
+# ---------------------------------------------------------------------------
+
+def test_settings_stores_conflict_warnings_and_post_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "openai"},  # type: ignore[arg-type]  # C2: no openai key -> disable
@@ -226,7 +363,10 @@ def test_settings_stores_conflict_warnings_and_post_enabled() -> None:
     assert s.vectorstore.enabled is True
 
 
-def test_settings_clean_config_has_no_warnings_and_post_enabled_true() -> None:
+def test_settings_clean_config_has_no_warnings_and_post_enabled_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_extras_all_installed(monkeypatch)
     s = Settings(
         vectorstore={"enabled": True, "backend": "chromadb"},  # type: ignore[arg-type]
         embeddings={"method": "sentence-transformers"},  # type: ignore[arg-type]

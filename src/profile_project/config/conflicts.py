@@ -26,6 +26,11 @@ _BACKEND_EXTRA_MODULE: dict[str, str] = {
     "pinecone": "pinecone",
 }
 
+_EMBEDDINGS_EXTRA_MODULE: dict[str, str] = {
+    "sentence-transformers": "sentence_transformers",
+    "openai": "openai",
+}
+
 _OPENAI_HOSTS = ("api.openai.com",)
 
 
@@ -111,11 +116,21 @@ def run_conflict_detection(
                 ))
 
     # C5: required python extra not installed -> warn+disable
+    # C5a: check vectorstore backend extra
     extra_mod = _BACKEND_EXTRA_MODULE.get(vs.backend)
     if enabled and extra_mod is not None and not _extra_installed(extra_mod):
         warnings.append(ConflictWarning(
             "C5", "warn",
             f"vectorstore.backend='{vs.backend}' but the '{extra_mod}' python "
+            "extra is not installed; disabling vectorstore (dependency missing).",
+            True,
+        ))
+    # C5b: check embeddings method extra (only when vectorstore still enabled)
+    emb_mod = _EMBEDDINGS_EXTRA_MODULE.get(emb.method)
+    if enabled and emb_mod is not None and not _extra_installed(emb_mod):
+        warnings.append(ConflictWarning(
+            "C5", "warn",
+            f"embeddings.method='{emb.method}' but the '{emb_mod}' python "
             "extra is not installed; disabling vectorstore (dependency missing).",
             True,
         ))
