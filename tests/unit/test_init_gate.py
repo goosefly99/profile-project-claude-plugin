@@ -42,3 +42,43 @@ def test_init_stamp_round_trips_and_forbids_extra() -> None:
                 "unexpected": "boom",
             }
         )
+
+
+from profile_project.config.init_gate import resolve_project_root
+
+
+def test_resolve_project_root_prefers_settings_then_env_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from profile_project.config.settings import Settings
+
+    explicit = tmp_path / "explicit"
+    explicit.mkdir()
+    project_dir_env = tmp_path / "project_dir_env"
+    project_dir_env.mkdir()
+    claude_dir = tmp_path / "claude_dir"
+    claude_dir.mkdir()
+
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(project_dir_env))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(claude_dir))
+
+    # settings.project_dir beats every env var.
+    settings = Settings(project_dir=explicit)
+    assert resolve_project_root(settings) == explicit.resolve()
+
+    # No settings -> PROFILE_PROJECT_PROJECT_DIR wins over CLAUDE_PROJECT_DIR.
+    assert resolve_project_root(None) == project_dir_env.resolve()
+
+    # Drop the primary env override -> falls to CLAUDE_PROJECT_DIR.
+    monkeypatch.delenv("PROFILE_PROJECT_PROJECT_DIR")
+    assert resolve_project_root(None) == claude_dir.resolve()
+
+
+def test_resolve_project_root_falls_back_to_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("PROFILE_PROJECT_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("PWD", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert resolve_project_root(None) == tmp_path.resolve()

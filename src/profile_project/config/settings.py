@@ -158,6 +158,7 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
         nested_model_default_partial_update=True,
         extra="forbid",
+        populate_by_name=True,
     )
 
     vectorstore: VectorStoreSettings = Field(default_factory=VectorStoreSettings)
