@@ -5,7 +5,6 @@ import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from profile_project.artifacts.paths import resolve_context_dir
 from profile_project.artifacts.schemas import VectorstoreIndex
 from profile_project.artifacts.store import (
     load_artifact,
@@ -50,19 +49,14 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _load_agent_page_contents(
-    run_id: str | None, settings: Settings, root: Path
-) -> list[RawContent]:
+def _load_agent_page_contents(settings: Settings, root: Path) -> list[RawContent]:
     """Read the agent-pages manifest, pre-split each page on its headings."""
-    manifest = load_artifact(root, "agent-pages", run_id)
+    manifest = load_artifact(root, "agent-pages")
     if manifest is None:
         return []
     pages = manifest.get("pages", [])
     if not isinstance(pages, list):
         return []
-    # resolve_context_dir anchors the agent-pages directory; profile_dirs is the
-    # (context_dir, guide_dir) source of truth it derives from.
-    _context_dir = resolve_context_dir(settings, root)
     contents: list[RawContent] = []
     for page in pages:
         rel = str(page["path"])
@@ -83,9 +77,9 @@ def _load_agent_page_contents(
     return contents
 
 
-def _stored_embedder_version(root: Path, run_id: str | None) -> str | None:
+def _stored_embedder_version(root: Path) -> str | None:
     """The embedder_version of the prior vectorstore-index artifact, if any."""
-    prior = load_artifact(root, "vectorstore-index", run_id)
+    prior = load_artifact(root, "vectorstore-index")
     if prior is None:
         return None
     version = prior.get("embedder_version")
@@ -107,11 +101,11 @@ def _build_index(run_id: str | None, *, reset_geometry: bool) -> dict[str, objec
     # embedder_version mismatch guard: never interleave geometries. A build that
     # discovers the store already holds a different embedder_version routes to the
     # geometry-safe reset (rebuild) path rather than mixing vector spaces (§10.4).
-    prior_version = _stored_embedder_version(root, run_id)
+    prior_version = _stored_embedder_version(root)
     if prior_version is not None and prior_version != embedder_version:
         reset_geometry = True
 
-    raw = _load_agent_page_contents(run_id, settings, root)
+    raw = _load_agent_page_contents(settings, root)
     chunks = token_chunk(raw, CHUNK_CONFIG)
 
     ids: list[str] = []

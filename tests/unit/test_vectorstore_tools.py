@@ -213,6 +213,8 @@ def _stub_build_subsystem(
         vt, "build_backend", lambda _s: (_FakeEmbedder(), store)
     )
     # One agent page on disk, loaded via the agent-pages artifact manifest.
+    # run_id must be None (flat path); a non-None run_id means the code is reading
+    # the wrong run-scoped path — return None so assertions catch the regression.
     monkeypatch.setattr(
         vt,
         "load_artifact",
@@ -224,7 +226,7 @@ def _stub_build_subsystem(
                  "page_type": "overview", "title": "Overview"},
             ],
             "page_count": 1,
-        } if t == "agent-pages" else None,
+        } if t == "agent-pages" and run_id is None else None,
     )
     stored: dict[str, object] = {}
 
@@ -342,6 +344,8 @@ def test_index_build_embedder_version_mismatch_routes_to_reset(
     store = _RecordingStore(count=4)
     _stub_build_subsystem(monkeypatch, store)
     # A prior vectorstore-index artifact stamped with a DIFFERENT geometry.
+    # Both branches gate on run_id is None (flat path); non-None run_id returns None
+    # so we verify the code loads from the correct flat path.
     monkeypatch.setattr(
         vt,
         "load_artifact",
@@ -353,10 +357,10 @@ def test_index_build_embedder_version_mismatch_routes_to_reset(
                      "page_type": "overview", "title": "Overview"},
                 ],
             }
-            if t == "agent-pages"
+            if t == "agent-pages" and run_id is None
             else (
                 {"embedder_version": "openai/text-embedding-3-small@v1"}
-                if t == "vectorstore-index"
+                if t == "vectorstore-index" and run_id is None
                 else None
             )
         ),
