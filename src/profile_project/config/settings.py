@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,6 +13,14 @@ from pydantic_settings import (
 )
 
 CONFIG_FILENAME = ".profile_project_config.json"
+
+# ---------------------------------------------------------------------------
+# Context variable for threading the project root into settings_customise_sources
+# without changing the classmethod signature (which pydantic-settings controls).
+# ---------------------------------------------------------------------------
+_PROJECT_ROOT: ContextVar[Path | None] = ContextVar(
+    "_PROFILE_PROJECT_ROOT", default=None
+)
 
 # ---------------------------------------------------------------------------
 # Top-level env-var aliases that don't fit the standard nested-delimiter
@@ -171,10 +180,23 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        # Top-level aliases sit between init_settings (highest priority) and
-        # the standard env source so that direct constructor kwargs still win.
+        # Lazy import to break the circular dependency:
+        # settings.py is imported by sources.py (for CONFIG_FILENAME / _PROJECT_ROOT),
+        # and sources.py is imported here. Deferring the import to call-time avoids
+        # the circular import at module load time.
+        from profile_project.config.sources import (  # noqa: PLC0415
+            ProjectJsonConfigSettingsSource,
+        )
+
+        project_root = _PROJECT_ROOT.get() or Path.cwd()
+        project_source = ProjectJsonConfigSettingsSource(settings_cls, project_root)
+        # Precedence: init > project-JSON > alias-env > env > dotenv > secrets
+        # _TopLevelAliasSource sits after project JSON so the JSON can override
+        # alias-env vars (PROFILE_PROJECT_DEFAULT_EMBEDDINGS_METHOD etc.) while
+        # direct constructor kwargs (init_settings) still win everything.
         return (
             init_settings,
+            project_source,
             _TopLevelAliasSource(settings_cls),
             env_settings,
             dotenv_settings,
