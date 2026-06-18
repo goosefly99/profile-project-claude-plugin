@@ -156,3 +156,38 @@ def test_write_init_stamp_honors_schema_version_kwarg(tmp_path: Path) -> None:
     stamp = read_stamp(tmp_path)
     assert stamp is not None
     assert stamp.schema_version == 1
+
+
+from profile_project.config.init_gate import is_initialized
+
+
+def test_is_initialized_false_when_uninitialized_and_leaves_no_residue(
+    tmp_path: Path,
+) -> None:
+    assert is_initialized(tmp_path) is False
+    # Strictly read-only: the predicate must NOT create the tree or config.
+    assert not (tmp_path / STAMP_DIRNAME).exists()
+    assert not (tmp_path / CONFIG_FILENAME).exists()
+
+
+def test_is_initialized_true_when_stamp_and_config_present(tmp_path: Path) -> None:
+    _write_stamp(tmp_path)
+    (tmp_path / CONFIG_FILENAME).write_text("{}", encoding="utf-8")
+    assert is_initialized(tmp_path) is True
+
+
+def test_is_initialized_false_when_config_missing(tmp_path: Path) -> None:
+    _write_stamp(tmp_path)
+    assert is_initialized(tmp_path) is False
+
+
+def test_is_initialized_false_on_unsupported_schema_version(tmp_path: Path) -> None:
+    _write_stamp(tmp_path, schema_version=999)
+    (tmp_path / CONFIG_FILENAME).write_text("{}", encoding="utf-8")
+    assert is_initialized(tmp_path) is False
+
+
+def test_is_initialized_false_on_root_mismatch(tmp_path: Path) -> None:
+    _write_stamp(tmp_path, project_root="/some/other/root")
+    (tmp_path / CONFIG_FILENAME).write_text("{}", encoding="utf-8")
+    assert is_initialized(tmp_path) is False

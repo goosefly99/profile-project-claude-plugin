@@ -91,3 +91,20 @@ def write_init_stamp(
     stamp_file = tree / STAMP_FILENAME
     atomic_write_json(stamp_file, stamp.model_dump(mode="json"))
     return stamp_file
+
+
+def is_initialized(root: Path) -> bool:
+    """READ-ONLY init predicate (spec §6b.2 invariant).
+
+    True iff a valid, supported, root-matching stamp exists AND the root config
+    file is present. Never creates `.profile_project/`, never touches the stamp,
+    never writes config. Any absence -> not initialized.
+    """
+    stamp = read_stamp(root)
+    if stamp is None:
+        return False
+    if stamp.schema_version not in SUPPORTED_STAMP_SCHEMA_VERSIONS:
+        return False
+    if stamp.project_root != str(root):
+        return False
+    return (root / CONFIG_FILENAME).is_file()
