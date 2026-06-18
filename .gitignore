@@ -1,0 +1,26 @@
+# Local development artifacts — not tracked (per project conventions)
+docs/superpowers/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# profile-project local data (the plugin's own gitignored tree, if run on this repo)
+.profile_project/
+
+# OS
+.DS_Store
+Thumbs.db
