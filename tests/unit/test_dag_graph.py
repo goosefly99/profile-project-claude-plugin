@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from profile_project.dag.graph import (
@@ -28,9 +30,9 @@ def test_phase_and_edge_are_frozen_dataclasses() -> None:
         optional=False,
     )
     e = Edge(src="a", dst="b", required=True)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         p.name = "y"  # type: ignore[misc]
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         e.required = False  # type: ignore[misc]
 
 
@@ -123,7 +125,11 @@ def test_phase_executor_input_mode_and_optional_match_spec() -> None:
     ):
         assert phases[name].input_mode == "all"
     optional = {p.name for p in PHASES if p.optional}
-    assert optional == {"analyze_docs", "analyze_transcripts_notes", "build_vectorstore"}
+    assert optional == {
+        "analyze_docs",
+        "analyze_transcripts_notes",
+        "build_vectorstore",
+    }
 
 
 def test_analyze_phases_are_parallel() -> None:

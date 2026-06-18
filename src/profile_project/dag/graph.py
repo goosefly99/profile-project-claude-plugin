@@ -170,11 +170,13 @@ def assert_dag(phases: list[Phase], edges: list[Edge]) -> None:
     for edge in edges:
         if edge.src not in names:
             raise ValueError(
-                f"edge {edge.src!r}->{edge.dst!r} references unknown phase: {edge.src!r}"
+                f"edge {edge.src!r}->{edge.dst!r} references"
+                f" unknown phase: {edge.src!r}"
             )
         if edge.dst not in names:
             raise ValueError(
-                f"edge {edge.src!r}->{edge.dst!r} references unknown phase: {edge.dst!r}"
+                f"edge {edge.src!r}->{edge.dst!r} references"
+                f" unknown phase: {edge.dst!r}"
             )
         adjacency[edge.src].append(edge.dst)
         indegree[edge.dst] += 1
