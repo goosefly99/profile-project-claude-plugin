@@ -266,7 +266,7 @@ def list_runs(runs_root: Path) -> list[RunState]:
     if not runs_root.is_dir():
         return []
     states: list[RunState] = []
-    for child in sorted(runs_root.iterdir()):
+    for child in runs_root.iterdir():
         if child.is_dir() and (child / RUN_STATE_FILENAME).is_file():
             states.append(load_run(child))
     states.sort(key=lambda s: s.run_id)

@@ -24,12 +24,6 @@ from profile_project.dag.run_state import (
     runs_root_for,
     utc_now_iso,
 )
-from profile_project.dag.run_state import (
-    EVENTS_FILENAME as _EVENTS_FILENAME,
-)
-from profile_project.dag.run_state import (
-    RUN_STATE_FILENAME as _RUN_STATE_FILENAME,
-)
 
 
 def test_module_constants_match_spec() -> None:
@@ -256,7 +250,7 @@ def test_persist_atomically_writes_run_state_and_bumps_updated_at(
     state = init_run({}, run_dir)
     original_updated = state.updated_at
     persist(state)
-    written = run_dir / _RUN_STATE_FILENAME
+    written = run_dir / RUN_STATE_FILENAME
     assert written.exists()
     data = json.loads(written.read_text(encoding="utf-8"))
     assert data["run_id"] == "run-persist"
@@ -266,7 +260,7 @@ def test_persist_atomically_writes_run_state_and_bumps_updated_at(
     assert data["updated_at"] == state.updated_at
     # no stray temp file from the atomic write
     siblings = sorted(p.name for p in run_dir.iterdir())
-    assert siblings == [_RUN_STATE_FILENAME]
+    assert siblings == [RUN_STATE_FILENAME]
 
 
 def test_persist_raises_when_run_data_dir_is_none() -> None:
@@ -291,7 +285,7 @@ def test_append_event_writes_one_jsonl_line_per_call(tmp_path: Path) -> None:
     append_event(
         state, "artifact_stored", phase="discover_context", type="source-index"
     )
-    lines = (run_dir / _EVENTS_FILENAME).read_text(encoding="utf-8").splitlines()
+    lines = (run_dir / EVENTS_FILENAME).read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     first = json.loads(lines[0])
     assert first["event"] == "phase_started"
@@ -398,6 +392,9 @@ def test_recover_run_reconciles_failed_status_with_no_failed_phase(
     assert recovered_phases == []
     assert any("failed" in w for w in warnings)
 
+    reloaded = load_run(run_dir)
+    assert reloaded.status == "running"
+
 
 def test_recover_run_leaves_clean_state_unchanged(tmp_path: Path) -> None:
     run_dir = run_dir_for(tmp_path, "run-clean")
@@ -411,6 +408,10 @@ def test_recover_run_leaves_clean_state_unchanged(tmp_path: Path) -> None:
     assert recovered.phases["discover_context"].status == "completed"
     assert recovered_phases == []
     assert warnings == []
+
+    reloaded = load_run(run_dir)
+    assert reloaded.status == "running"
+    assert reloaded.phases["discover_context"].status == "completed"
 
 
 def test_recover_run_raises_pipeline_error_on_corrupt_state(tmp_path: Path) -> None:
