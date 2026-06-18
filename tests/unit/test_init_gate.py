@@ -161,6 +161,22 @@ def test_write_init_stamp_honors_schema_version_kwarg(tmp_path: Path) -> None:
     assert stamp.schema_version == 1
 
 
+def test_build_init_stamp_returns_payload_without_writing(tmp_path: Path) -> None:
+    from profile_project.config.init_gate import build_init_stamp
+
+    payload = build_init_stamp(tmp_path, tmp_path / CONFIG_FILENAME)
+    assert set(payload) == {
+        "schema_version",
+        "initialized_at",
+        "project_root",
+        "config_path",
+    }
+    assert payload["project_root"] == str(tmp_path.resolve())
+    assert payload["schema_version"] == 1
+    # No filesystem side effects.
+    assert not (tmp_path / ".profile_project").exists()
+
+
 def test_is_initialized_false_when_uninitialized_and_leaves_no_residue(
     tmp_path: Path,
 ) -> None:
@@ -264,6 +280,8 @@ def test_gated_tool_leaves_zero_residue(
 def test_move_then_force_reinit_rewrites_old_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from profile_project.config.files import atomic_write_json
+
     old = tmp_path / "old"
     new = tmp_path / "new"
     old.mkdir()
@@ -273,33 +291,30 @@ def test_move_then_force_reinit_rewrites_old_root(
     }
     (old / _CONFIG_FILENAME).write_text(json.dumps(cfg), encoding="utf-8")
     monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(old))
-    # Simulate extras installed so conflict detection doesn't disable vectorstore.
     monkeypatch.setattr(_conflicts, "_extra_installed", lambda _m: True)
     _ct.pp_init_project(cfg)
     run_dir = old / ".profile_project" / "runs" / "r1"
     run_dir.mkdir(parents=True)
-    # Write the run-state JSON using the same path format that write_init_stamp
-    # uses (str(root)) so that rewrite_root_prefix can match the stamped_root in
-    # the raw file text on any OS.  We build the JSON manually (without json.dumps)
-    # so the separator characters are NOT double-encoded — e.g. on Windows
-    # json.dumps would turn C:\foo into "C:\\foo", which is a different string
-    # from what the stamp records as str(root) == "C:\foo".
     old_root_str = str(old.resolve())
-    run_state_file = run_dir / "run-state.json"
-    run_state_file.write_text(
-        '{"run_id": "r1",'
-        ' "project_root": "' + old_root_str + '",'
-        ' "config_path": "' + str((old / _CONFIG_FILENAME).resolve()) + '",'
-        ' "run_data_dir": "' + str(run_dir.resolve()) + '"}',
-        encoding="utf-8",
+    # Write run-state exactly as the pipeline does (atomic_write_json -> json.dumps),
+    # so the test exercises the real on-disk encoding rather than a hand-crafted one.
+    atomic_write_json(
+        run_dir / "run-state.json",
+        {
+            "run_id": "r1",
+            "project_root": old_root_str,
+            "config_path": str((old / _CONFIG_FILENAME).resolve()),
+            "run_data_dir": str(run_dir.resolve()),
+        },
     )
     shutil.move(str(old), str(new))
     monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(new))
     result = _ct.pp_init_project(cfg, force=True)
     assert result["ok"] is True
-    blob = (
-        new / ".profile_project" / "runs" / "r1" / "run-state.json"
-    ).read_text(encoding="utf-8")
-    new_root_str = str(new.resolve())
-    assert old_root_str not in blob
-    assert new_root_str in blob
+    data = json.loads(
+        (new / ".profile_project" / "runs" / "r1" / "run-state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert data["project_root"] == str(new.resolve())
+    assert old_root_str not in json.dumps(data)

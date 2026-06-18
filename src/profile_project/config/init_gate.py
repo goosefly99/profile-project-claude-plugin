@@ -26,6 +26,7 @@ __all__ = [
     "STAMP_SCHEMA_VERSION",
     "SUPPORTED_STAMP_SCHEMA_VERSIONS",
     "InitStamp",
+    "build_init_stamp",
     "detect_root_move",
     "is_initialized",
     "not_initialized_error",
@@ -82,6 +83,18 @@ def read_stamp(root: Path) -> InitStamp | None:
         return None
 
 
+def build_init_stamp(
+    root: Path, config_path: Path, *, schema_version: int = 1
+) -> dict[str, object]:
+    """Build the init-stamp payload dict (spec §6b.2). No filesystem side effects."""
+    return InitStamp(
+        schema_version=schema_version,
+        initialized_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        project_root=str(root.resolve()),
+        config_path=str(config_path.resolve()),
+    ).model_dump(mode="json")
+
+
 def write_init_stamp(
     root: Path, config_path: Path, *, schema_version: int = 1
 ) -> Path:
@@ -98,14 +111,10 @@ def write_init_stamp(
     """
     tree = root / STAMP_DIRNAME
     tree.mkdir(parents=True, exist_ok=True)
-    stamp = InitStamp(
-        schema_version=schema_version,
-        initialized_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        project_root=str(root.resolve()),
-        config_path=str(config_path.resolve()),
-    )
     stamp_file = tree / STAMP_FILENAME
-    atomic_write_json(stamp_file, stamp.model_dump(mode="json"))
+    atomic_write_json(
+        stamp_file, build_init_stamp(root, config_path, schema_version=schema_version)
+    )
     return stamp_file
 
 
