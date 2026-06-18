@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+from profile_project.dag.brief import (
+    AgentDirective,
+    PhaseBrief,
+    build_phase_brief,
+    resolve_input_artifacts,
+    resolve_model,
+)
+from profile_project.dag.lifecycle import (
+    complete_phase,
+    fail_phase,
+    retry_phase,
+    skip_phase,
+    start_phase,
+    state_transition_error,
+)
 from profile_project.dag.resolver import (
     input_satisfied,
     required_predecessors_satisfied,
@@ -28,6 +43,17 @@ from profile_project.dag.run_state import (
 
 __all__ = [
     *globals().get("__all__", []),
+    "AgentDirective",
+    "PhaseBrief",
+    "build_phase_brief",
+    "resolve_input_artifacts",
+    "resolve_model",
+    "complete_phase",
+    "fail_phase",
+    "retry_phase",
+    "skip_phase",
+    "start_phase",
+    "state_transition_error",
     "input_satisfied",
     "required_predecessors_satisfied",
     "resolve_next_phases",
