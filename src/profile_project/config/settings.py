@@ -69,16 +69,11 @@ class OllamaSettings(BaseModel):
 
 class EmbeddingsSettings(BaseModel):
     # populate_by_name allows field name "method" to be accepted alongside
-    # validation_alias values when data is provided by pydantic-settings'
-    # env_nested_delimiter resolution.
+    # the env_nested_delimiter resolution used by pydantic-settings.
     model_config = {"populate_by_name": True}
 
     method: Literal["sentence-transformers", "openai", "ollama", "disabled"] = Field(
         default="sentence-transformers",
-        validation_alias=AliasChoices(
-            "PROFILE_PROJECT_DEFAULT_EMBEDDINGS_METHOD",
-            "PROFILE_PROJECT_EMBEDDINGS__METHOD",
-        ),
     )
     sentence_transformers: SentenceTransformersSettings = Field(
         default_factory=SentenceTransformersSettings
@@ -98,13 +93,12 @@ class PineconeSettings(BaseModel):
 
 
 class VectorStoreSettings(BaseModel):
-    # populate_by_name allows field name "backend" alongside its alias when
-    # data arrives via env_nested_delimiter or direct constructor kwargs.
+    # populate_by_name allows field name "backend" to be accepted alongside
+    # the env_nested_delimiter resolution used by pydantic-settings.
     model_config = {"populate_by_name": True}
 
     backend: Literal["chromadb", "pinecone", "disabled"] = Field(
         default="chromadb",
-        validation_alias=AliasChoices("PROFILE_PROJECT_VECTORSTORE__BACKEND"),
     )
     enabled: bool = True
     collection: str = "profile-project"

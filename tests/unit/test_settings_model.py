@@ -111,3 +111,23 @@ def test_project_dir_alias(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_profile_settings_has_no_persisted_root_dir() -> None:
     assert "root_dir" not in ProfileSettings.model_fields
     assert set(ProfileSettings.model_fields) == {"name"}
+
+
+# ---------------------------------------------------------------------------
+# extra="forbid" boundary behaviour
+# ---------------------------------------------------------------------------
+# NOTE: extra="forbid" on Settings rejects unknown *constructor kwargs* (see
+# test_extra_forbid_rejects_unknown_top_level_key above). It does NOT reject
+# unknown env vars — pydantic-settings' env source silently ignores env vars
+# that match no field or alias.  Unknown-key rejection for the JSON config
+# file is enforced by the JSON config source, which will be wired in a later
+# task (not by the env source tested here).
+
+
+def test_unknown_env_var_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown env var that matches no field is silently ignored by the env source."""
+    monkeypatch.setenv("PROFILE_PROJECT_TRULY_UNKNOWN", "whatever")
+    s = Settings()
+    # Construction succeeds — extra="forbid" does not reject unknown env vars.
+    assert s.embeddings.method == "sentence-transformers"
+    assert s.vectorstore.backend == "chromadb"
