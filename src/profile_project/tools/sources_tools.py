@@ -48,8 +48,8 @@ def pp_discover_sources(persist: bool = False) -> dict[str, object]:
 def pp_list_sources(kind: str | None = None) -> dict[str, object]:
     root = resolve_project_root()
     index = _source_index(root)
-    sources = index["sources"]
-    assert isinstance(sources, list)
+    raw = index["sources"]
+    sources = raw if isinstance(raw, list) else []
     if kind is not None:
         sources = [s for s in sources if s["kind"] == kind]
     return {"sources": sources, "counts": index["counts"]}
@@ -59,8 +59,8 @@ def pp_list_sources(kind: str | None = None) -> dict[str, object]:
 def pp_get_source(source_id: str) -> dict[str, object]:
     root = resolve_project_root()
     index = _source_index(root)
-    sources = index["sources"]
-    assert isinstance(sources, list)
+    raw = index["sources"]
+    sources = raw if isinstance(raw, list) else []
     match = next((s for s in sources if s["source_id"] == source_id), None)
     return {"source": match}
 

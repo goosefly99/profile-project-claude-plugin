@@ -110,6 +110,20 @@ def test_list_artifact_refs_empty_when_dir_absent(tmp_path: Path) -> None:
     assert list_artifact_refs(tmp_path) == []
 
 
+def test_load_artifact_with_run_id_reads_flat_store(tmp_path: Path) -> None:
+    # store_artifact writes flat regardless of run_id; load_artifact with a
+    # run_id must still find it (artifacts are flat; run_id is provenance only).
+    store_artifact(
+        tmp_path, run_id="r1", phase="discover_context",
+        artifact_type="source-index", content=_source_index_content(),
+    )
+    loaded = load_artifact(tmp_path, "source-index", run_id="r1")
+    assert loaded is not None
+    assert loaded["artifact_type"] == "source-index"
+    refs = list_artifact_refs(tmp_path, run_id="r1")
+    assert any(r.type == "source-index" for r in refs)
+
+
 def test_list_artifact_refs_returns_one_ref_per_present_artifact_sorted(
     tmp_path: Path,
 ) -> None:

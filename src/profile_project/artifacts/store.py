@@ -78,8 +78,12 @@ def store_artifact(
 def load_artifact(
     root: Path, artifact_type: str, run_id: str | None = None
 ) -> dict[str, object] | None:
-    """Read a stored artifact as a ``dict``; returns ``None`` when absent."""
-    target = artifact_path(root, artifact_type, run_id)
+    """Read a stored artifact as a ``dict``; returns ``None`` when absent.
+
+    Artifacts are stored flat (one per type, latest-wins); ``run_id`` is
+    accepted for API symmetry but does not scope the read path.
+    """
+    target = artifact_path(root, artifact_type)
     if not target.is_file():
         return None
     raw = target.read_text(encoding="utf-8")
@@ -93,9 +97,10 @@ def list_artifact_refs(
     """List one ``ArtifactRef`` per present artifact (sorted by type).
 
     Read-only: returns ``[]`` when the artifacts dir does not exist; uses each
-    file's mtime as ``created_at``.
+    file's mtime as ``created_at``. Artifacts are stored flat; ``run_id`` is
+    accepted for API symmetry but does not scope the read path.
     """
-    directory = artifacts_dir(root, run_id)
+    directory = artifacts_dir(root)
     if not directory.is_dir():
         return []
     refs: list[ArtifactRef] = []

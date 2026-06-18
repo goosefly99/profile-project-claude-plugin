@@ -31,11 +31,7 @@ def pp_list_artifacts(run_id: str | None = None) -> dict[str, object]:
     root = resolve_project_root()
     if not is_initialized(root):
         return {"artifacts": []}
-    refs = list_artifact_refs(root, run_id)
-    # Fallback to flat artifacts dir when run-scoped dir has nothing.
-    if not refs and run_id is not None:
-        refs = list_artifact_refs(root, None)
-    return {"artifacts": [ref.to_dict() for ref in refs]}
+    return {"artifacts": [ref.to_dict() for ref in list_artifact_refs(root, run_id)]}
 
 
 @tool_envelope
@@ -43,11 +39,7 @@ def pp_load_artifact(type: str, run_id: str | None = None) -> dict[str, object]:
     root = resolve_project_root()
     if not is_initialized(root):
         return {"artifact": None}
-    # Try run-scoped path first (when run_id given), fall back to flat artifacts dir.
-    artifact = load_artifact(root, type, run_id)
-    if artifact is None and run_id is not None:
-        artifact = load_artifact(root, type, None)
-    return {"artifact": artifact}
+    return {"artifact": load_artifact(root, type, run_id)}
 
 
 @tool_envelope
