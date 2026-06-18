@@ -22,7 +22,11 @@ def required_predecessors_satisfied(
     skipped: set[str],
 ) -> bool:
     """Gate 2: OR over required incoming edges; a skipped source counts as satisfied."""
-    raise NotImplementedError
+    required_sources = [e.src for e in edges if e.dst == phase.name and e.required]
+    if not required_sources:
+        return True
+    satisfied = completed | skipped
+    return any(src in satisfied for src in required_sources)
 
 
 def resolve_next_phases(

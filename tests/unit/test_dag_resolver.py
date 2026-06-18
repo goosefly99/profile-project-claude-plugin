@@ -73,3 +73,53 @@ def test_input_satisfied_required_optional_mode() -> None:
     assert input_satisfied(synth, {"docs-analysis", "context-analysis"}) is False
     assert input_satisfied(synth, {"codebase-analysis"}) is True
     assert input_satisfied(synth, {"codebase-analysis", "docs-analysis"}) is True
+
+
+def test_required_predecessors_or_over_required_edges() -> None:
+    # synthesize_knowledge has one required edge (from analyze_codebase) plus two
+    # optional edges; the OR-over-required gate ignores the optional ones.
+    edges = [
+        Edge(src="analyze_codebase", dst="synthesize_knowledge", required=True),
+        Edge(src="analyze_docs", dst="synthesize_knowledge", required=False),
+        Edge(src="analyze_transcripts_notes", dst="synthesize_knowledge", required=False),
+    ]
+    synth = _phase("synthesize_knowledge", input_mode="required_optional")
+
+    # No required predecessor done yet -> not satisfied.
+    assert required_predecessors_satisfied(synth, edges, set(), set()) is False
+    # Required predecessor completed -> satisfied.
+    assert (
+        required_predecessors_satisfied(synth, edges, {"analyze_codebase"}, set())
+        is True
+    )
+    # An optional predecessor done is NOT enough.
+    assert (
+        required_predecessors_satisfied(synth, edges, {"analyze_docs"}, set())
+        is False
+    )
+
+
+def test_required_predecessor_skipped_counts_as_satisfied() -> None:
+    # verify_profile's required edge is build_agent_pages -> verify_profile; a skipped
+    # source counts the same as completed for the predecessor gate.
+    edges = [
+        Edge(src="build_agent_pages", dst="verify_profile", required=True),
+        Edge(src="build_human_spec", dst="verify_profile", required=False),
+        Edge(src="build_vectorstore", dst="verify_profile", required=False),
+    ]
+    verify = _phase(
+        "verify_profile",
+        inputs=["agent-pages", "human-spec", "vectorstore-index"],
+        input_mode="any",
+    )
+    assert required_predecessors_satisfied(verify, edges, set(), set()) is False
+    assert (
+        required_predecessors_satisfied(verify, edges, set(), {"build_agent_pages"})
+        is True
+    )
+
+
+def test_required_predecessors_satisfied_entry_phase() -> None:
+    # An entry phase has no required incoming edge -> gate 2 is vacuously satisfied.
+    discover = _phase("discover_context", entry=True, input_mode="all")
+    assert required_predecessors_satisfied(discover, [], set(), set()) is True
