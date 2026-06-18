@@ -36,5 +36,22 @@ def resolve_next_phases(
     available_artifact_types: set[str],
     skipped: set[str],
 ) -> list[str]:
-    """Single non-recursive pass: return runnable phase names in insertion order."""
-    raise NotImplementedError
+    """Single non-recursive pass: return runnable phase names in insertion order.
+
+    A phase is runnable iff it is neither completed nor skipped and both gates pass:
+    (1) input_satisfied (keyed on input_mode) over available artifact TYPES, and
+    (2) required_predecessors_satisfied (OR over required incoming edges, skipped
+    counting as satisfied). A skipped phase is never offered. Returns [] when the
+    run is terminal.
+    """
+    done = completed | skipped
+    runnable: list[str] = []
+    for phase in phases:
+        if phase.name in done:
+            continue
+        if not input_satisfied(phase, available_artifact_types):
+            continue
+        if not required_predecessors_satisfied(phase, edges, completed, skipped):
+            continue
+        runnable.append(phase.name)
+    return runnable

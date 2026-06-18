@@ -123,3 +123,71 @@ def test_required_predecessors_satisfied_entry_phase() -> None:
     # An entry phase has no required incoming edge -> gate 2 is vacuously satisfied.
     discover = _phase("discover_context", entry=True, input_mode="all")
     assert required_predecessors_satisfied(discover, [], set(), set()) is True
+
+
+def test_resolve_offers_entry_phase_first() -> None:
+    phases = [
+        _phase("discover_context", entry=True, inputs=[], input_mode="all"),
+        _phase("analyze_codebase", inputs=["source-index"], input_mode="all"),
+    ]
+    edges = [Edge(src="discover_context", dst="analyze_codebase", required=True)]
+    # Nothing completed, no artifacts yet: only the entry phase is runnable.
+    runnable = resolve_next_phases(
+        phases,
+        edges,
+        completed=set(),
+        available_artifact_types=set(),
+        skipped=set(),
+    )
+    assert runnable == ["discover_context"]
+
+
+def test_resolve_advances_after_entry_completes() -> None:
+    phases = [
+        _phase("discover_context", entry=True, inputs=[], input_mode="all"),
+        _phase("analyze_codebase", inputs=["source-index"], input_mode="all"),
+    ]
+    edges = [Edge(src="discover_context", dst="analyze_codebase", required=True)]
+    runnable = resolve_next_phases(
+        phases,
+        edges,
+        completed={"discover_context"},
+        available_artifact_types={"source-index"},
+        skipped=set(),
+    )
+    assert runnable == ["analyze_codebase"]
+
+
+def test_resolve_returns_insertion_order_for_parallel_phases() -> None:
+    # After discover completes, the three analyze_* phases are all runnable; the
+    # resolver must return them in PHASES insertion order, deterministically.
+    phases = [
+        _phase("discover_context", entry=True, inputs=[], input_mode="all"),
+        _phase("analyze_codebase", inputs=["source-index"], input_mode="all"),
+        _phase(
+            "analyze_docs", inputs=["source-index"], input_mode="all", optional=True
+        ),
+        _phase(
+            "analyze_transcripts_notes",
+            inputs=["source-index"],
+            input_mode="all",
+            optional=True,
+        ),
+    ]
+    edges = [
+        Edge(src="discover_context", dst="analyze_codebase", required=True),
+        Edge(src="discover_context", dst="analyze_docs", required=False),
+        Edge(src="discover_context", dst="analyze_transcripts_notes", required=False),
+    ]
+    runnable = resolve_next_phases(
+        phases,
+        edges,
+        completed={"discover_context"},
+        available_artifact_types={"source-index"},
+        skipped=set(),
+    )
+    assert runnable == [
+        "analyze_codebase",
+        "analyze_docs",
+        "analyze_transcripts_notes",
+    ]
