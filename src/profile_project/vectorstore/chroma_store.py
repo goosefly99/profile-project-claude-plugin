@@ -35,7 +35,7 @@ class ChromaDBStore:
         # upsert (not add) so re-indexing the same id overwrites idempotently.
         self._collection.upsert(
             ids=ids,
-            embeddings=embeddings,
+            embeddings=embeddings,  # type: ignore[arg-type]
             documents=documents,
             metadatas=metadatas,  # type: ignore[arg-type]
         )
@@ -48,7 +48,7 @@ class ChromaDBStore:
         where_document: dict[str, object] | None = None,
     ) -> list[QueryResult]:
         res = self._collection.query(
-            query_embeddings=[embedding],
+            query_embeddings=[embedding],  # type: ignore[arg-type]
             n_results=top_k,
             where=where,  # type: ignore[arg-type]
             where_document=where_document,  # type: ignore[arg-type]

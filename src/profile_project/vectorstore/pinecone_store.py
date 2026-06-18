@@ -42,7 +42,8 @@ class PineconeStore:
         namespace: str | None = None,
     ) -> None:
         self._index_name = index
-        self._namespace = namespace
+        # Pinecone uses "" for the default namespace; never None at call sites.
+        self._namespace: str = namespace if namespace is not None else ""
         self._collection = collection
         pc = Pinecone(api_key=api_key)
         if not pc.has_index(index):
@@ -51,12 +52,14 @@ class PineconeStore:
                 f"creates indexes. Create it first or point at an existing index."
             )
         desc = pc.describe_index(index)
-        if desc.dimension != embedding_dim:
-            raise IndexDimensionMismatch(index, desc.dimension, embedding_dim)
+        index_dim: int = int(desc.dimension) if desc.dimension is not None else -1
+        if index_dim != embedding_dim:
+            raise IndexDimensionMismatch(index, index_dim, embedding_dim)
         if not desc.status["ready"]:
             raise ValueError(f"Pinecone index {index!r} is not ready.")
         # Connect by host (production-safe), resolved once.
-        self._index = pc.Index(host=desc.host)
+        host: str = str(desc.host) if desc.host is not None else ""
+        self._index = pc.Index(host=host)
 
     def add(
         self,
@@ -65,9 +68,13 @@ class PineconeStore:
         documents: list[str],
         metadatas: list[dict[str, object]] | None = None,
     ) -> None:
-        metas: list[dict[str, object]] = metadatas if metadatas is not None else [{} for _ in ids]
+        metas: list[dict[str, object]] = (
+            metadatas if metadatas is not None else [{} for _ in ids]
+        )
         vectors: list[dict[str, object]] = []
-        for chunk_id, values, document, meta in zip(ids, embeddings, documents, metas):
+        for chunk_id, values, document, meta in zip(
+            ids, embeddings, documents, metas, strict=True
+        ):
             # Pinecone has no document column; fold it into metadata (scalars only).
             payload: dict[str, object] = dict(meta)
             payload["document"] = document

@@ -35,7 +35,9 @@ def _fake_pc(*, has_index: bool, dimension: int, ready: bool = True) -> MagicMoc
     return pc
 
 
-def test_connects_by_host_and_never_creates_index(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_connects_by_host_and_never_creates_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pc = _fake_pc(has_index=True, dimension=384)
     monkeypatch.setattr(
         "profile_project.vectorstore.pinecone_store.Pinecone",
@@ -126,5 +128,7 @@ def test_count_reads_namespace_vector_count(monkeypatch: pytest.MonkeyPatch) -> 
         "profile_project.vectorstore.pinecone_store.Pinecone",
         lambda api_key: pc,
     )
-    store = PineconeStore(api_key="k", index="my-index", embedding_dim=384, collection="c")
+    store = PineconeStore(
+        api_key="k", index="my-index", embedding_dim=384, collection="c"
+    )
     assert store.count() == 7
