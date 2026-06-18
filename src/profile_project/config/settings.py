@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field, SecretStr
+from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_serializer
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -170,6 +170,17 @@ class Settings(BaseSettings):
     )
     openai_api_key: SecretStr | None = None
     pinecone_api_key: SecretStr | None = None
+
+    @field_serializer("openai_api_key", "pinecone_api_key", when_used="always")
+    def _mask_secret(self, value: SecretStr | None) -> str | None:
+        """Return a fixed mask for any set secret, None when unset.
+
+        Ensures neither model_dump() nor model_dump(mode='json') ever exposes
+        the real secret value — pydantic's default only masks in json/repr mode.
+        """
+        if value is None:
+            return None
+        return "**********"
 
     @classmethod
     def settings_customise_sources(
