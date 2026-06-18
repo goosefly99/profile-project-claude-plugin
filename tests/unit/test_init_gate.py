@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+import profile_project.config.conflicts as _conflicts
 from profile_project.config.init_gate import (
     CONFIG_FILENAME,
     STAMP_DIRNAME,
@@ -21,6 +23,8 @@ from profile_project.config.init_gate import (
     resolve_project_root,
     write_init_stamp,
 )
+from profile_project.config.settings import CONFIG_FILENAME as _CONFIG_FILENAME
+from profile_project.tools import config_tools as _ct
 
 
 def test_stamp_constants_match_spec() -> None:
@@ -231,3 +235,71 @@ def test_project_root_moved_error_shape(tmp_path: Path) -> None:
     assert err["resolved_root"] == str(tmp_path)
     assert err["retriable"] is False
     assert err["remedy"] == "/profile-project:init --reinit"
+
+
+# ---------------------------------------------------------------------------
+# Task 9: gate-residue + move-reinit regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_gated_tool_leaves_zero_residue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / _CONFIG_FILENAME).write_text(
+        json.dumps(
+            {
+                "vectorstore": {"enabled": True, "backend": "chromadb"},
+                "embeddings": {"method": "sentence-transformers"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    result = _ct.pp_config_set("vectorstore.collection", "x")
+    assert result["error"]["code"] == "not_initialized"
+    assert not (tmp_path / ".profile_project").exists()
+    assert not (tmp_path / ".profile_project" / "chroma").exists()
+
+
+def test_move_then_force_reinit_rewrites_old_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = tmp_path / "old"
+    new = tmp_path / "new"
+    old.mkdir()
+    cfg = {
+        "vectorstore": {"enabled": True, "backend": "chromadb"},
+        "embeddings": {"method": "sentence-transformers"},
+    }
+    (old / _CONFIG_FILENAME).write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(old))
+    # Simulate extras installed so conflict detection doesn't disable vectorstore.
+    monkeypatch.setattr(_conflicts, "_extra_installed", lambda _m: True)
+    _ct.pp_init_project(cfg)
+    run_dir = old / ".profile_project" / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    # Write the run-state JSON using the same path format that write_init_stamp
+    # uses (str(root)) so that rewrite_root_prefix can match the stamped_root in
+    # the raw file text on any OS.  We build the JSON manually (without json.dumps)
+    # so the separator characters are NOT double-encoded — e.g. on Windows
+    # json.dumps would turn C:\foo into "C:\\foo", which is a different string
+    # from what the stamp records as str(root) == "C:\foo".
+    old_root_str = str(old.resolve())
+    run_state_file = run_dir / "run-state.json"
+    run_state_file.write_text(
+        '{"run_id": "r1",'
+        ' "project_root": "' + old_root_str + '",'
+        ' "config_path": "' + str((old / _CONFIG_FILENAME).resolve()) + '",'
+        ' "run_data_dir": "' + str(run_dir.resolve()) + '"}',
+        encoding="utf-8",
+    )
+    shutil.move(str(old), str(new))
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(new))
+    result = _ct.pp_init_project(cfg, force=True)
+    assert result["ok"] is True
+    blob = (
+        new / ".profile_project" / "runs" / "r1" / "run-state.json"
+    ).read_text(encoding="utf-8")
+    new_root_str = str(new.resolve())
+    assert old_root_str not in blob
+    assert new_root_str in blob

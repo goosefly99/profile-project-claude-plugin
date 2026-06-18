@@ -50,12 +50,9 @@ def configure_logging() -> None:
 
 
 def register_tools(mcp: FastMCP) -> None:
-    """Register every pp_* tool onto the given FastMCP instance.
-
-    Stub for Task 1: later tasks fill this in by importing and wiring the
-    tool modules onto the passed instance.
-    """
-    return None
+    """Register every pp_* tool onto the given FastMCP instance."""
+    from profile_project.tools import register_tools as _register_tools  # noqa: PLC0415
+    _register_tools(mcp)
 
 
 def main() -> None:

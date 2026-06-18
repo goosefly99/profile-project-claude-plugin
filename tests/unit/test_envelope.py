@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from profile_project.dag.run_state import PipelineError
+from profile_project.tools import _envelope
 from profile_project.tools._envelope import ToolError, tool_envelope
 
 
@@ -58,27 +61,28 @@ def test_tool_envelope_renders_unexpected_exception() -> None:
     assert error["retriable"] is False
 
 
-from pathlib import Path
-
-from profile_project.tools import _envelope
-
-
 def _patch_gate(
-    monkeypatch,
+    monkeypatch: object,
     *,
     resolved_root: str,
     initialized: bool,
     moved: bool = False,
     stamped_root: str | None = None,
 ) -> None:
-    monkeypatch.setattr(
-        _envelope, "resolve_project_root", lambda settings=None: Path(resolved_root)
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        _envelope,
+        "resolve_project_root",
+        lambda settings=None: Path(resolved_root),
     )
-    monkeypatch.setattr(_envelope, "detect_root_move", lambda root: (moved, stamped_root))
-    monkeypatch.setattr(_envelope, "is_initialized", lambda root: initialized)
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        _envelope, "detect_root_move", lambda root: (moved, stamped_root)
+    )
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        _envelope, "is_initialized", lambda root: initialized
+    )
 
 
-def test_require_init_refuses_not_initialized(monkeypatch) -> None:
+def test_require_init_refuses_not_initialized(monkeypatch: object) -> None:
     _patch_gate(monkeypatch, resolved_root="/abs/proj", initialized=False)
 
     @_envelope.require_init
@@ -93,7 +97,7 @@ def test_require_init_refuses_not_initialized(monkeypatch) -> None:
     assert result["error"]["retriable"] is False
 
 
-def test_require_init_refuses_moved_root(monkeypatch) -> None:
+def test_require_init_refuses_moved_root(monkeypatch: object) -> None:
     _patch_gate(
         monkeypatch,
         resolved_root="/new/proj",
@@ -113,7 +117,7 @@ def test_require_init_refuses_moved_root(monkeypatch) -> None:
     assert result["error"]["remedy"] == "/profile-project:init --reinit"
 
 
-def test_require_init_passes_through_when_initialized(monkeypatch) -> None:
+def test_require_init_passes_through_when_initialized(monkeypatch: object) -> None:
     _patch_gate(monkeypatch, resolved_root="/abs/proj", initialized=True)
 
     @_envelope.require_init

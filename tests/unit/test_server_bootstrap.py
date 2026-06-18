@@ -19,9 +19,11 @@ def test_mcp_instance_is_fastmcp_named_profile_project() -> None:
     assert server.mcp.name == "profile-project"
 
 
-def test_register_tools_is_callable_stub() -> None:
-    # Stub returns None and does not raise when handed the module-level mcp.
-    assert server.register_tools(server.mcp) is None  # type: ignore[func-returns-value]
+def test_register_tools_registers_without_error() -> None:
+    # Registration is now real (not a stub): create a fresh instance so real
+    # tool registration is exercised without polluting the shared server.mcp.
+    m = FastMCP("test")
+    assert server.register_tools(m) is None  # type: ignore[func-returns-value]
 
 
 def test_configure_logging_routes_structlog_to_stderr_only(
