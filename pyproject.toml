@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "profile-project"
+version = "0.1.0"
+description = "Profiles a project into agent-facing context, a human guide, and a queryable vectorstore"
+requires-python = ">=3.11"
+authors = [{ name = "olive" }]
+dependencies = [
+    "mcp>=1.0,<2",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "tiktoken",
+    "structlog",
+    "httpx",
+]
+
+[project.optional-dependencies]
+chroma = ["chromadb"]
+pinecone = ["pinecone>=9.1.0"]
+openai = ["openai"]
+local-embeddings = ["sentence-transformers"]
+ollama = []
+all = [
+    "chromadb",
+    "pinecone>=9.1.0",
+    "openai",
+    "sentence-transformers",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "mypy",
+    "ruff",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/profile_project"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["src", "tests"]
+
+[tool.ruff]
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
