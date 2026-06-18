@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from pydantic_settings.sources import EnvSettingsSource
 
 from profile_project.config.conflicts import run_conflict_detection
+from profile_project.config.init_gate import is_initialized, resolve_project_root
 from profile_project.config.settings import (
     CONFIG_FILENAME,
     Settings,
@@ -25,9 +26,6 @@ _PROVENANCE_FIELDS: tuple[str, ...] = (
     "vectorstore.enabled",
     "vectorstore.collection",
 )
-
-# Stamp filename written by pp_init_project.
-_INIT_STAMP = ".profile_project_initialized"
 
 
 def _flatten(prefix: str, value: Any, out: dict[str, Any]) -> None:
@@ -123,22 +121,6 @@ def resolve_field(settings: Settings, dotted_key: str) -> tuple[object, str]:
     project_root = settings.project_dir or Path.cwd()
     source = compute_provenance(project_root).get(dotted_key, "default")
     return obj, source
-
-
-def is_initialized(project_root: Path) -> bool:
-    """Return True iff the project initialization stamp file is present."""
-    return (project_root / _INIT_STAMP).exists()
-
-
-def resolve_project_root(settings: Settings) -> Path:
-    """Return the effective project root.
-
-    Uses ``settings.project_dir`` when set (the env-overridden value), otherwise
-    falls back to ``Path.cwd()``.  The fallback is intentionally not the
-    ``project_root`` arg passed to ``validate_config`` because this mirrors what
-    pydantic-settings resolves at construction time.
-    """
-    return settings.project_dir if settings.project_dir is not None else Path.cwd()
 
 
 def validate_config(project_root: Path) -> dict[str, Any]:

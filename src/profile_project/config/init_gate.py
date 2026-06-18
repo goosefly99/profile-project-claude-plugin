@@ -19,6 +19,22 @@ STAMP_FILENAME: str = ".initialized"
 # truth in `config.settings` and is imported above; `is_initialized` and
 # `write_init_stamp` use it directly, and `config/__init__.py` re-exports it.
 
+__all__ = [
+    "CONFIG_FILENAME",
+    "STAMP_DIRNAME",
+    "STAMP_FILENAME",
+    "STAMP_SCHEMA_VERSION",
+    "SUPPORTED_STAMP_SCHEMA_VERSIONS",
+    "InitStamp",
+    "detect_root_move",
+    "is_initialized",
+    "not_initialized_error",
+    "project_root_moved_error",
+    "read_stamp",
+    "resolve_project_root",
+    "write_init_stamp",
+]
+
 
 class InitStamp(BaseModel):
     """The `.profile_project/.initialized` stamp (spec §6b.2)."""

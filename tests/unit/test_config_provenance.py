@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from profile_project.config.init_gate import write_init_stamp
 from profile_project.config.provenance import compute_provenance, validate_config
 
 
@@ -127,8 +128,8 @@ def test_validate_config_ok_shape(
 def test_validate_config_initialized_true_when_stamp_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _write_json_config(tmp_path, {})
-    (tmp_path / ".profile_project_initialized").write_text("", encoding="utf-8")
+    cfg = _write_json_config(tmp_path, {})
+    write_init_stamp(tmp_path, cfg)
 
     result = validate_config(tmp_path)
 
