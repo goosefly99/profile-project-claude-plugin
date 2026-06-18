@@ -45,6 +45,10 @@ strict = true
 python_version = "3.11"
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+module = ["sentence_transformers.*", "openai.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py311"
 src = ["src", "tests"]
