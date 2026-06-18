@@ -12,7 +12,9 @@ def input_satisfied(phase: Phase, available_artifact_types: set[str]) -> bool:
         return any(t in available_artifact_types for t in inputs)
     if phase.input_mode == "required_optional":
         return len(inputs) > 0 and inputs[0] in available_artifact_types
-    raise ValueError(f"unknown input_mode {phase.input_mode!r} for phase {phase.name!r}")
+    raise ValueError(
+        f"unknown input_mode {phase.input_mode!r} for phase {phase.name!r}"
+    )
 
 
 def required_predecessors_satisfied(

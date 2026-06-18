@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from profile_project.dag.graph import Edge, Phase
+from profile_project.dag.graph import EDGES, PHASES, Edge, Phase
 from profile_project.dag.resolver import (
     input_satisfied,
     required_predecessors_satisfied,
@@ -81,7 +81,11 @@ def test_required_predecessors_or_over_required_edges() -> None:
     edges = [
         Edge(src="analyze_codebase", dst="synthesize_knowledge", required=True),
         Edge(src="analyze_docs", dst="synthesize_knowledge", required=False),
-        Edge(src="analyze_transcripts_notes", dst="synthesize_knowledge", required=False),
+        Edge(
+            src="analyze_transcripts_notes",
+            dst="synthesize_knowledge",
+            required=False,
+        ),
     ]
     synth = _phase("synthesize_knowledge", input_mode="required_optional")
 
@@ -191,3 +195,112 @@ def test_resolve_returns_insertion_order_for_parallel_phases() -> None:
         "analyze_docs",
         "analyze_transcripts_notes",
     ]
+
+
+def _build_branch() -> tuple[list[Phase], list[Edge]]:
+    phases = [
+        _phase("synthesize_knowledge", input_mode="required_optional"),
+        _phase("build_agent_pages", inputs=["knowledge-graph"], input_mode="all"),
+        _phase("build_human_spec", inputs=["knowledge-graph"], input_mode="all"),
+        _phase(
+            "build_vectorstore",
+            inputs=["knowledge-graph"],
+            input_mode="all",
+            optional=True,
+        ),
+        _phase(
+            "verify_profile",
+            inputs=["agent-pages", "human-spec", "vectorstore-index"],
+            input_mode="any",
+        ),
+    ]
+    edges = [
+        Edge(src="synthesize_knowledge", dst="build_agent_pages", required=True),
+        Edge(src="synthesize_knowledge", dst="build_human_spec", required=True),
+        Edge(src="synthesize_knowledge", dst="build_vectorstore", required=True),
+        Edge(src="build_agent_pages", dst="verify_profile", required=True),
+        Edge(src="build_human_spec", dst="verify_profile", required=False),
+        Edge(src="build_vectorstore", dst="verify_profile", required=False),
+    ]
+    return phases, edges
+
+
+def test_skipped_branch_satisfies_successor_and_is_never_offered() -> None:
+    # build_vectorstore toggled off (skipped). Its required edge into verify_profile
+    # is satisfied by it being skipped; build_vectorstore is never offered.
+    phases, edges = _build_branch()
+    runnable = resolve_next_phases(
+        phases,
+        edges,
+        completed={"synthesize_knowledge"},
+        available_artifact_types={"knowledge-graph"},
+        skipped={"build_vectorstore"},
+    )
+    assert "build_vectorstore" not in runnable
+    assert runnable == ["build_agent_pages", "build_human_spec"]
+
+
+def test_verify_runs_over_what_was_built_with_skipped_vectorstore() -> None:
+    # After the two build phases complete (vectorstore skipped), verify_profile is
+    # runnable: input_mode=any is met by agent-pages/human-spec, and its required
+    # predecessor build_agent_pages is completed.
+    phases, edges = _build_branch()
+    runnable = resolve_next_phases(
+        phases,
+        edges,
+        completed={"synthesize_knowledge", "build_agent_pages", "build_human_spec"},
+        available_artifact_types={"knowledge-graph", "agent-pages", "human-spec"},
+        skipped={"build_vectorstore"},
+    )
+    assert runnable == ["verify_profile"]
+
+
+def test_terminal_detection_returns_empty_list() -> None:
+    # Everything done or skipped -> resolver returns [] (terminal signal).
+    phases, edges = _build_branch()
+    runnable = resolve_next_phases(
+        phases,
+        edges,
+        completed={
+            "synthesize_knowledge",
+            "build_agent_pages",
+            "build_human_spec",
+            "verify_profile",
+        },
+        available_artifact_types={"knowledge-graph", "agent-pages", "human-spec"},
+        skipped={"build_vectorstore"},
+    )
+    assert runnable == []
+
+
+def test_resolve_drives_full_fixed_graph_to_terminal() -> None:
+    # Walk the real fixed graph (all toggles on) to completion, asserting the
+    # resolver advances deterministically and terminates with [].
+    completed: set[str] = set()
+    available: set[str] = set()
+    produces = {
+        "discover_context": "source-index",
+        "analyze_codebase": "codebase-analysis",
+        "analyze_docs": "docs-analysis",
+        "analyze_transcripts_notes": "context-analysis",
+        "synthesize_knowledge": "knowledge-graph",
+        "build_agent_pages": "agent-pages",
+        "build_human_spec": "human-spec",
+        "build_vectorstore": "vectorstore-index",
+        "verify_profile": "verification-report",
+    }
+    guard = 0
+    while True:
+        guard += 1
+        assert guard <= len(PHASES) + 1  # single-pass resolver must terminate fast
+        runnable = resolve_next_phases(
+            PHASES, EDGES, completed, available, skipped=set()
+        )
+        if not runnable:
+            break
+        for name in runnable:
+            completed.add(name)
+            available.add(produces[name])
+    assert completed == {p.name for p in PHASES}
+    # Once everything is completed, the resolver reports terminal.
+    assert resolve_next_phases(PHASES, EDGES, completed, available, set()) == []
