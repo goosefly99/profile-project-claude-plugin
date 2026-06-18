@@ -108,3 +108,16 @@ def is_initialized(root: Path) -> bool:
     if stamp.project_root != str(root):
         return False
     return (root / CONFIG_FILENAME).is_file()
+
+
+def detect_root_move(root: Path) -> tuple[bool, str | None]:
+    """Detect a moved/renamed project root (spec §6b.7). Read-only.
+
+    Returns (moved, stamped_root): moved is True iff a stamp exists whose
+    recorded project_root differs from str(root). stamped_root is the stamp's
+    project_root, or None when no stamp is present.
+    """
+    stamp = read_stamp(root)
+    if stamp is None:
+        return (False, None)
+    return (stamp.project_root != str(root), stamp.project_root)

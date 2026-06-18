@@ -191,3 +191,26 @@ def test_is_initialized_false_on_root_mismatch(tmp_path: Path) -> None:
     _write_stamp(tmp_path, project_root="/some/other/root")
     (tmp_path / CONFIG_FILENAME).write_text("{}", encoding="utf-8")
     assert is_initialized(tmp_path) is False
+
+
+from profile_project.config.init_gate import detect_root_move
+
+
+def test_detect_root_move_no_stamp(tmp_path: Path) -> None:
+    moved, stamped = detect_root_move(tmp_path)
+    assert moved is False
+    assert stamped is None
+
+
+def test_detect_root_move_same_root(tmp_path: Path) -> None:
+    _write_stamp(tmp_path)
+    moved, stamped = detect_root_move(tmp_path)
+    assert moved is False
+    assert stamped == str(tmp_path)
+
+
+def test_detect_root_move_detects_mismatch(tmp_path: Path) -> None:
+    _write_stamp(tmp_path, project_root="/old/abs/path")
+    moved, stamped = detect_root_move(tmp_path)
+    assert moved is True
+    assert stamped == "/old/abs/path"
