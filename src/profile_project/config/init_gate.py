@@ -42,3 +42,23 @@ def resolve_project_root(settings: Settings | None = None) -> Path:
         if value:
             return Path(value).resolve()
     return Path.cwd().resolve()
+
+
+def read_stamp(root: Path) -> InitStamp | None:
+    """Read + validate the init stamp for `root`; None if absent/invalid.
+
+    Read-only: opens the file for reading only and never creates the tree.
+    """
+    stamp_file = root / STAMP_DIRNAME / STAMP_FILENAME
+    try:
+        raw = stamp_file.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError, OSError):
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    try:
+        return InitStamp.model_validate(data)
+    except ValueError:
+        return None

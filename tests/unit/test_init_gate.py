@@ -82,3 +82,40 @@ def test_resolve_project_root_falls_back_to_cwd(
     monkeypatch.delenv("PWD", raising=False)
     monkeypatch.chdir(tmp_path)
     assert resolve_project_root(None) == tmp_path.resolve()
+
+
+from profile_project.config.init_gate import read_stamp
+
+
+def _write_stamp(root: Path, **overrides: object) -> Path:
+    tree = root / STAMP_DIRNAME
+    tree.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "initialized_at": "2026-06-18T14:03:11Z",
+        "project_root": str(root),
+        "config_path": str(root / CONFIG_FILENAME),
+    }
+    payload.update(overrides)
+    stamp_file = tree / STAMP_FILENAME
+    stamp_file.write_text(json.dumps(payload), encoding="utf-8")
+    return stamp_file
+
+
+def test_read_stamp_returns_none_when_absent(tmp_path: Path) -> None:
+    assert read_stamp(tmp_path) is None
+
+
+def test_read_stamp_returns_none_on_malformed_json(tmp_path: Path) -> None:
+    tree = tmp_path / STAMP_DIRNAME
+    tree.mkdir()
+    (tree / STAMP_FILENAME).write_text("{not json", encoding="utf-8")
+    assert read_stamp(tmp_path) is None
+
+
+def test_read_stamp_parses_valid_stamp(tmp_path: Path) -> None:
+    _write_stamp(tmp_path)
+    stamp = read_stamp(tmp_path)
+    assert stamp is not None
+    assert stamp.schema_version == 1
+    assert stamp.project_root == str(tmp_path)
