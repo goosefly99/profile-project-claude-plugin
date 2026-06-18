@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+
+if TYPE_CHECKING:
+    from profile_project.config.settings import Settings
 
 from profile_project.config.settings import CONFIG_FILENAME
 
@@ -110,7 +113,7 @@ class ProjectJsonConfigSettingsSource(PydanticBaseSettingsSource):
         return self._data
 
 
-def load_settings(project_root: Path) -> Any:
+def load_settings(project_root: Path) -> Settings:
     """Construct Settings for ``project_root`` with project JSON above env."""
     # Lazy import to break circular dependency:
     # sources.py -> settings.py (CONFIG_FILENAME)

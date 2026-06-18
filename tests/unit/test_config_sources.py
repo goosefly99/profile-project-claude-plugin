@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from profile_project.config.settings import CONFIG_FILENAME, Settings
+from profile_project.config.settings import _PROJECT_ROOT, CONFIG_FILENAME, Settings
 from profile_project.config.sources import (
     FORBIDDEN_KEYS,
     ForbiddenSecretError,
@@ -83,7 +83,7 @@ def test_forbidden_keys_constant_membership() -> None:
 def test_settings_customise_sources_order(tmp_path: Path) -> None:
     names: list[str] = []
 
-    class _Probe(Settings):  # type: ignore[misc]
+    class _Probe(Settings):
         @classmethod
         def settings_customise_sources(  # type: ignore[no-untyped-def]
             cls,
@@ -103,7 +103,11 @@ def test_settings_customise_sources_order(tmp_path: Path) -> None:
             names.extend(type(s).__name__ for s in sources)
             return sources
 
-    _Probe()
+    token = _PROJECT_ROOT.set(tmp_path)
+    try:
+        _Probe()
+    finally:
+        _PROJECT_ROOT.reset(token)
     assert names[0] == "InitSettingsSource"
     assert names[1] == "ProjectJsonConfigSettingsSource"
     # Task 2's _TopLevelAliasSource sits at index 2 (between project-JSON and env)
