@@ -46,7 +46,7 @@ python_version = "3.11"
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["sentence_transformers.*", "openai.*"]
+module = ["sentence_transformers.*", "openai.*", "chromadb.*", "pinecone.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
