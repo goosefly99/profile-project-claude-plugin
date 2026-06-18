@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from profile_project.config.files import (
     atomic_write_json,
@@ -12,10 +13,12 @@ from profile_project.config.files import (
     transaction,
 )
 from profile_project.config.init_gate import (
+    STAMP_DIRNAME,
+    STAMP_FILENAME,
+    build_init_stamp,
     detect_root_move,
     is_initialized,
     resolve_project_root,
-    write_init_stamp,
 )
 from profile_project.config.provenance import (
     resolve_field,
@@ -42,9 +45,7 @@ _REQUIRED_SECRET_BY_SELECTOR: dict[tuple[str, str], str] = {
 _SECRET_FIELDS: frozenset[str] = frozenset({"openai_api_key", "pinecone_api_key"})
 
 
-def _assert_no_forbidden_secret(
-    config: dict[str, object], _trail: str = ""
-) -> None:
+def _assert_no_forbidden_secret(config: dict[str, object]) -> None:
     for key, value in config.items():
         if key in FORBIDDEN_KEYS:
             raise PipelineError(
@@ -54,7 +55,7 @@ def _assert_no_forbidden_secret(
                 remedy="Move the secret out of the JSON and into the environment.",
             )
         if isinstance(value, dict):
-            _assert_no_forbidden_secret(value, f"{_trail}{key}.")
+            _assert_no_forbidden_secret(value)
 
 
 def _required_env_secrets(config: dict[str, object]) -> list[str]:
@@ -125,20 +126,10 @@ def pp_init_project(
 ) -> dict[str, object]:
     root = resolve_project_root()
     config_path = root / CONFIG_FILENAME
-    tree = root / ".profile_project"
+    tree = root / STAMP_DIRNAME
 
-    # 1. validate candidate config (+ forbidden-secret reject).
+    # 1. Candidate-level guards — no writes yet, so a refusal leaves zero residue.
     _assert_no_forbidden_secret(config)
-    try:
-        validation = validate_config(root)
-    except ForbiddenSecretError as exc:
-        raise PipelineError(str(exc), code="forbidden_secret") from exc
-    if not validation["ok"]:
-        raise PipelineError(
-            "; ".join(validation["errors"]), code="invalid_config"
-        )
-
-    # 2. verify required env secrets for the selected backend/method.
     missing = _required_env_secrets(config)
     if missing:
         raise PipelineError(
@@ -147,38 +138,61 @@ def pp_init_project(
             remedy="Export the listed PROFILE_PROJECT_* variable(s) and retry.",
         )
 
-    initialized = is_initialized(root)
     moved, stamped_root = detect_root_move(root)
     created: list[str] = []
 
-    # 4. idempotent + force-gated path: refresh config + stamp, preserve artifacts.
-    if initialized and not force:
-        atomic_write_json(config_path, config)
-        write_init_stamp(root, config_path)
-        if ensure_gitignore_entry(root, ".profile_project/"):
-            created.append(".gitignore entry")
-        return {
-            "config_path": str(config_path),
-            "initialized": True,
-            "created": created,
-            "warnings": validation["warnings"],
-        }
+    # Snapshot the live config so an invalid candidate (or any later failure)
+    # restores the prior file — the transaction only removes files it *creates*,
+    # not an in-place overwrite of a pre-existing config.
+    had_prior_config = config_path.exists()
+    prior_config: object | None = (
+        json.loads(config_path.read_text(encoding="utf-8"))
+        if had_prior_config
+        else None
+    )
 
-    # 3. transactional all-or-nothing bootstrap (rolled back on any failure).
-    with transaction(root):
-        atomic_write_json(config_path, config)
-        if not tree.is_dir():
-            (tree / "runs").mkdir(parents=True)
-            (tree / "artifacts").mkdir(parents=True)
-            (tree / "cache").mkdir(parents=True)
-            (tree / "chroma").mkdir(parents=True)
-            created.append(".profile_project/")
-        write_init_stamp(root, config_path)
-        created.append(".initialized")
-        if ensure_gitignore_entry(root, ".profile_project/"):
-            created.append(".gitignore entry")
-        if moved and force and stamped_root is not None:
-            rewrite_root_prefix(tree / "runs", stamped_root, str(root))
+    def _restore_prior_config() -> None:
+        if had_prior_config and prior_config is not None:
+            atomic_write_json(config_path, prior_config)
+        else:
+            config_path.unlink(missing_ok=True)
+
+    validation: dict[str, Any]
+    try:
+        with transaction(root) as txn:
+            # Stage the CANDIDATE, then validate the candidate now on disk.
+            txn.write_json(config_path, config)
+            try:
+                validation = validate_config(root)
+            except ForbiddenSecretError as exc:
+                raise PipelineError(str(exc), code="forbidden_secret") from exc
+            if not validation["ok"]:
+                raise PipelineError(
+                    "; ".join(validation["errors"]), code="invalid_config"
+                )
+
+            if not tree.is_dir():
+                txn.mkdir(tree / "runs")
+                txn.mkdir(tree / "artifacts")
+                txn.mkdir(tree / "cache")
+                txn.mkdir(tree / "chroma")
+                created.append(".profile_project/")
+
+            # Write the stamp through the transaction so a later failure rolls it
+            # back too (raw write_init_stamp would leave residue in .profile_project).
+            txn.write_json(
+                tree / STAMP_FILENAME, build_init_stamp(root, config_path)
+            )
+            created.append(".initialized")
+
+            if ensure_gitignore_entry(root, ".profile_project/"):
+                created.append(".gitignore entry")
+
+            if moved and force and stamped_root is not None:
+                rewrite_root_prefix(tree / "runs", stamped_root, str(root))
+    except (PipelineError, ForbiddenSecretError):
+        _restore_prior_config()
+        raise
 
     return {
         "config_path": str(config_path),
@@ -200,11 +214,13 @@ def pp_config_set(key: str, value: object) -> dict[str, object]:
     config_path = root / CONFIG_FILENAME
     with open(config_path, encoding="utf-8") as fh:
         current: dict[str, object] = json.load(fh)
+    prior = copy.deepcopy(current)
     _nested_set(current, key, value)
-    # dry-run validate the candidate before committing the live file.
     atomic_write_json(config_path, current)
     validation = validate_config(root)
     if not validation["ok"]:
+        # Restore the prior config so a rejected set never corrupts the live file.
+        atomic_write_json(config_path, prior)
         raise PipelineError(
             "; ".join(validation["errors"]), code="invalid_config"
         )

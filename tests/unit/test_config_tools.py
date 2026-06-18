@@ -122,3 +122,52 @@ def test_pp_config_set_writes_post_init(project: Path) -> None:
     assert result["ok"] is True
     assert result["written"] is True
     assert "renamed" in (project / CONFIG_FILENAME).read_text(encoding="utf-8")
+
+
+def test_pp_init_project_rejects_invalid_candidate_and_persists_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    bad = {
+        "totally_unknown_key": "x",
+        "embeddings": {"method": "sentence-transformers"},
+    }
+    result = config_tools.pp_init_project(bad)
+    assert result["ok"] is False
+    assert result["error"]["code"] == "invalid_config"
+    assert not (tmp_path / CONFIG_FILENAME).exists()
+    assert not (tmp_path / ".profile_project").exists()
+
+
+def test_pp_init_project_rolls_back_tree_on_late_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    (tmp_path / CONFIG_FILENAME).write_text(
+        json.dumps({"vectorstore": {"enabled": True, "backend": "chromadb"},
+                    "embeddings": {"method": "sentence-transformers"}}),
+        encoding="utf-8",
+    )
+
+    def _boom(_root: Path, _entry: str) -> bool:
+        raise OSError("boom after tree creation")
+
+    monkeypatch.setattr(config_tools, "ensure_gitignore_entry", _boom)
+    cfg = {"vectorstore": {"enabled": True, "backend": "chromadb"},
+           "embeddings": {"method": "sentence-transformers"}}
+    result = config_tools.pp_init_project(cfg)
+    assert result["ok"] is False
+    # genuine all-or-nothing: the tree the bootstrap created is rolled back
+    assert not (tmp_path / ".profile_project").exists()
+
+
+def test_pp_config_set_invalid_value_restores_prior_config(project: Path) -> None:
+    cfg = {"vectorstore": {"enabled": True, "backend": "chromadb"},
+           "embeddings": {"method": "sentence-transformers"}}
+    config_tools.pp_init_project(cfg)
+    before = (project / CONFIG_FILENAME).read_text(encoding="utf-8")
+    result = config_tools.pp_config_set("totally_unknown_key", "x")
+    assert result["ok"] is False
+    assert result["error"]["code"] == "invalid_config"
+    # the live config is byte-for-byte restored
+    assert (project / CONFIG_FILENAME).read_text(encoding="utf-8") == before
