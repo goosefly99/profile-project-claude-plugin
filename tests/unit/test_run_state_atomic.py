@@ -171,6 +171,25 @@ def test_rewrite_root_prefix_rewrites_absolute_paths(tmp_path: Path) -> None:
     assert old_root not in events.read_text(encoding="utf-8")
 
 
+def test_rewrite_root_prefix_matches_json_escaped_windows_paths(tmp_path: Path) -> None:
+    # Paths written via atomic_write_json are JSON-escaped; the rewriter must
+    # match that on-disk form, not the raw str(root) form.
+    run_data_root = tmp_path / "runs"
+    state = run_data_root / "r1" / "run-state.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    old_root = r"C:\proj\old"
+    new_root = r"C:\proj\new"
+    atomic_write_json(
+        state,
+        {"project_root": old_root, "run_data_dir": old_root + r"\runs\r1"},
+    )
+    rewritten = rewrite_root_prefix(run_data_root, old_root, new_root)
+    assert rewritten == 1
+    reloaded = json.loads(state.read_text(encoding="utf-8"))
+    assert reloaded["project_root"] == new_root
+    assert old_root not in json.dumps(reloaded)
+
+
 def test_rewrite_root_prefix_skips_unaffected_files(tmp_path: Path) -> None:
     run_data_root = tmp_path / "runs"
     untouched = run_data_root / "r2" / "run-state.json"
@@ -232,3 +251,19 @@ def test_transaction_preserves_preexisting_dirs_on_rollback(tmp_path: Path) -> N
     assert not (keep / "runs").exists()
     # ...but the pre-existing dir + file it did not create survive
     assert (keep / "sentinel.txt").read_text(encoding="utf-8") == "keep me"
+
+
+def test_transaction_mkdir_rolls_back_empty_dirs(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError):
+        with transaction(tmp_path) as txn:
+            txn.mkdir(tmp_path / ".profile_project" / "runs")
+            txn.mkdir(tmp_path / ".profile_project" / "artifacts")
+            assert (tmp_path / ".profile_project" / "runs").is_dir()
+            raise RuntimeError("fail after empty-dir creation")
+    assert not (tmp_path / ".profile_project").exists()
+
+
+def test_transaction_mkdir_commits_on_clean_exit(tmp_path: Path) -> None:
+    with transaction(tmp_path) as txn:
+        txn.mkdir(tmp_path / ".profile_project" / "runs")
+    assert (tmp_path / ".profile_project" / "runs").is_dir()

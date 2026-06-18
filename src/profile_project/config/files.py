@@ -129,22 +129,28 @@ def rewrite_root_prefix(run_data_root: Path, old_root: str, new_root: str) -> in
     """Replace every occurrence of *old_root* with *new_root* in all
     ``*.json`` and ``*.jsonl`` files under *run_data_root* (recursive).
 
-    Only files whose text actually contains *old_root* are rewritten; each
-    rewrite uses a temp file + ``fsync`` + atomic rename.
+    Paths inside these files are JSON-string-encoded, so on Windows their
+    backslashes are doubled (``C:\\proj`` -> ``"C:\\\\proj"``). We match the
+    JSON-encoded form (surrounding quotes stripped) so the rewrite works for the
+    files the pipeline actually writes via ``json.dumps``/``atomic_write_json``,
+    on every platform. Only files whose text contains the encoded *old_root* are
+    rewritten; each rewrite uses a temp file + ``fsync`` + atomic rename.
 
     Returns the number of files rewritten.
     """
     run_data_root = Path(run_data_root)
     if old_root == new_root or not run_data_root.exists():
         return 0
+    old_enc = json.dumps(old_root)[1:-1]
+    new_enc = json.dumps(new_root)[1:-1]
     rewritten = 0
     for path in sorted(run_data_root.rglob("*")):
         if not path.is_file() or path.suffix not in (".json", ".jsonl"):
             continue
         original = path.read_text(encoding="utf-8")
-        if old_root not in original:
+        if old_enc not in original:
             continue
-        _atomic_write_text(path, original.replace(old_root, new_root))
+        _atomic_write_text(path, original.replace(old_enc, new_enc))
         rewritten += 1
     return rewritten
 
@@ -185,6 +191,15 @@ class Transaction:
         atomic_write_json(path, data)
         if not existed:
             self.created_files.append(path)
+
+    def mkdir(self, path: Path) -> None:
+        """Create *path* (and any missing parents), recording every directory
+        this transaction newly creates so :meth:`rollback` can remove it."""
+        path = Path(path)
+        self._ensure_dirs(path)
+        if not path.exists():
+            path.mkdir()
+            self.created_dirs.append(path)
 
     def append_jsonl(self, path: Path, obj: dict[str, object]) -> None:
         """Append *obj* as a JSONL line to *path*.
