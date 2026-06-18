@@ -5,7 +5,14 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_serializer
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    SecretStr,
+    field_serializer,
+    model_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -170,6 +177,22 @@ class Settings(BaseSettings):
     )
     openai_api_key: SecretStr | None = None
     pinecone_api_key: SecretStr | None = None
+    conflict_warnings: list[str] = Field(default_factory=list)
+    vectorstore_enabled_post: bool = True
+
+    @model_validator(mode="after")
+    def _apply_conflict_detection(self) -> Settings:
+        # Construction-time pass: probes are not injected here (C3/C4 live probes
+        # run later via pp_config_validate / pp_vectorstore_check, which call
+        # run_conflict_detection with probes and re-fold the results).
+        from profile_project.config.conflicts import (
+            run_conflict_detection,  # noqa: PLC0415
+        )
+
+        warnings, enabled = run_conflict_detection(self)
+        object.__setattr__(self, "conflict_warnings", warnings)
+        object.__setattr__(self, "vectorstore_enabled_post", enabled)
+        return self
 
     @field_serializer("openai_api_key", "pinecone_api_key", when_used="always")
     def _mask_secret(self, value: SecretStr | None) -> str | None:
