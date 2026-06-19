@@ -1,0 +1,27 @@
+{
+  "vectorstore": {
+    "enabled": true,
+    "backend": "chromadb",
+    "collection": "tiny-project",
+    "chromadb": { "path": ".profile_project/chroma" }
+  },
+  "embeddings": {
+    "method": "sentence-transformers",
+    "sentence_transformers": { "model": "all-MiniLM-L6-v2" }
+  },
+  "phases": {
+    "include_docs": true,
+    "include_transcripts": true,
+    "build_vectorstore": true
+  },
+  "output": {
+    "context_dir": "profile/context",
+    "guide_dir": "profile/guide"
+  },
+  "sources": {
+    "extra_doc_globs": ["docs/**/*.md"],
+    "notes": ["notes/design-notes.md"],
+    "excluded_dirs": ["build", "dist", ".venv", "node_modules"]
+  },
+  "profile": { "name": "tiny-project" }
+}

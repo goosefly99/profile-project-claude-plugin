@@ -58,3 +58,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["-m", "not integration"]
+markers = [
+    "integration: end-to-end tests using real sentence-transformers + chromadb (downloads the HF model on first run; CI must cache the model dir).",
+]
