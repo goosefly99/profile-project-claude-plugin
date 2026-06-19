@@ -33,16 +33,22 @@ def test_secrets_masked_in_model_dump_json_mode(
     assert "pc-real-secret-value" not in repr(dumped)
 
 
-def test_secrets_none_when_unset() -> None:
+def test_secrets_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     """When secrets are not configured, model_dump() returns None for both fields."""
+    # Environment-independent: clear any exported secret vars before constructing.
+    monkeypatch.delenv("PROFILE_PROJECT_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("PROFILE_PROJECT_PINECONE_API_KEY", raising=False)
     settings = Settings()
     dumped = settings.model_dump()
     assert dumped["openai_api_key"] is None
     assert dumped["pinecone_api_key"] is None
 
 
-def test_secrets_none_when_unset_json_mode() -> None:
+def test_secrets_none_when_unset_json_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Same None-when-unset invariant holds for json-mode dumps."""
+    # Environment-independent: clear any exported secret vars before constructing.
+    monkeypatch.delenv("PROFILE_PROJECT_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("PROFILE_PROJECT_PINECONE_API_KEY", raising=False)
     settings = Settings()
     dumped = settings.model_dump(mode="json")
     assert dumped["openai_api_key"] is None

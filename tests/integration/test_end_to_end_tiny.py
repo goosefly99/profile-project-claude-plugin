@@ -287,6 +287,19 @@ def _drive_to_terminal(run_id: str, project_root: Path) -> dict[str, object]:
         for phase in runnable:
             brief = pp_start_phase(run_id=run_id, phase=phase)
             assert brief["ok"] is True, brief
+            # C-1 regression guard: a brief's input_artifacts must be repo-relative
+            # PATHS sub-agents can open (".profile_project/artifacts/<t>.json"),
+            # never artifact TYPE strings ("codebase-analysis").
+            inputs = brief["input_artifacts"]
+            assert isinstance(inputs, list)
+            for art in inputs:
+                assert isinstance(art, str)
+                assert ".profile_project/artifacts/" in art, art
+                assert art.endswith(".json"), art
+            if phase == "synthesize_knowledge":
+                # An agent phase with multiple upstream inputs: must be non-empty
+                # and every entry a path, proving the type->path fix end-to-end.
+                assert len(inputs) > 0
             if phase == "discover_context":
                 disc = pp_discover_sources(persist=True)
                 assert disc["ok"] is True, disc

@@ -455,7 +455,7 @@ def test_vectorstore_check_dry_run_never_writes(
     monkeypatch.setattr(vt, "build_backend", _boom)
     monkeypatch.setattr(vt, "build_embedder", lambda _s: _FakeEmbedder())
 
-    result = vt.pp_vectorstore_check(dry_run=True)
+    result = vt.pp_vectorstore_check()
     assert result["ok"] is True
     assert result["backend"] == "chromadb"
     assert result["reachable"] is True  # chromadb local is always reachable
@@ -463,6 +463,90 @@ def test_vectorstore_check_dry_run_never_writes(
     assert isinstance(result["warnings"], list)
     # Zero residue: dry-run never created the store tree.
     assert not (tmp_path / ".profile_project").exists()
+
+
+def test_vectorstore_check_wires_ollama_probe_c3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # C3: ollama selected but unreachable -> the wired fail-closed probe fires,
+    # the conflict matrix disables the vectorstore, and reachable is False.
+    _write_config(
+        tmp_path,
+        vectorstore={"enabled": True, "backend": "chromadb"},
+        embeddings={"method": "ollama"},
+    )
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setattr(vt, "build_embedder", lambda _s: _FakeEmbedder())
+    # Force the ollama reachability probe to fail closed.
+    monkeypatch.setattr(vt, "_ollama_probe", lambda _url, _timeout: False)
+
+    result = vt.pp_vectorstore_check()
+    assert result["ok"] is True
+    warnings = result["warnings"]
+    assert isinstance(warnings, list)
+    assert any("unreachable" in str(w) for w in warnings)
+    # backend is chromadb, but the C3 disable means the matrix disabled it; the
+    # ollama-unreachable warning is surfaced regardless.
+
+
+def test_vectorstore_check_wires_dim_probe_c4(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # C4: pinecone backend with a dimension mismatch -> the wired fail-closed
+    # dim_probe surfaces the geometry mismatch and disables the vectorstore.
+    _write_config(
+        tmp_path,
+        vectorstore={
+            "enabled": True,
+            "backend": "pinecone",
+            "pinecone": {"index": "existing-index"},
+        },
+    )
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("PROFILE_PROJECT_PINECONE_API_KEY", "pc-test-key")
+    monkeypatch.setattr(vt, "build_embedder", lambda _s: _FakeEmbedder())
+    # effective dim 384 (embedder) vs index dim 1536 -> mismatch.
+    monkeypatch.setattr(vt, "_dim_probe", lambda _s, _timeout: (384, 1536))
+
+    result = vt.pp_vectorstore_check()
+    assert result["ok"] is True
+    warnings = result["warnings"]
+    assert isinstance(warnings, list)
+    assert any("384" in str(w) and "1536" in str(w) for w in warnings)
+    assert result["reachable"] is False  # disabled by the geometry mismatch
+
+
+def test_build_backend_catches_index_dimension_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # C-2.1: a PineconeStore dimension mismatch raised in build_store must be
+    # caught -> build_backend returns None (warn+disable), never propagates.
+    from profile_project.vectorstore import factory
+    from profile_project.vectorstore.pinecone_store import IndexDimensionMismatch
+
+    # Build a real settings via the loader against a pinecone config.
+    _write_config(
+        tmp_path,
+        vectorstore={
+            "enabled": True,
+            "backend": "pinecone",
+            "pinecone": {"index": "existing-index"},
+        },
+    )
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("PROFILE_PROJECT_PINECONE_API_KEY", "pc-test-key")
+    from profile_project.config.settings import Settings
+
+    real_settings = Settings()
+
+    monkeypatch.setattr(factory, "run_conflict_detection", lambda _s: ([], True))
+    monkeypatch.setattr(factory, "build_embedder", lambda _s: _FakeEmbedder())
+
+    def _raise_mismatch(_settings: object, _embedder: object) -> object:
+        raise IndexDimensionMismatch("existing-index", 1536, 384)
+
+    monkeypatch.setattr(factory, "build_store", _raise_mismatch)
+    assert factory.build_backend(real_settings) is None
 
 
 def test_register_vectorstore_tools_registers_all_five() -> None:

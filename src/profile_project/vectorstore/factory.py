@@ -9,7 +9,10 @@ from profile_project.vectorstore.embedders import (
     EmbedderExtraMissing,
     build_embedder,
 )
-from profile_project.vectorstore.pinecone_store import PineconeStore
+from profile_project.vectorstore.pinecone_store import (
+    IndexDimensionMismatch,
+    PineconeStore,
+)
 
 if TYPE_CHECKING:
     from profile_project.config.settings import Settings
@@ -52,8 +55,10 @@ def build_backend(settings: Settings) -> tuple[Embedder, VectorStore] | None:
     """Build (embedder, store) or None when the vectorstore is disabled.
 
     Returns None when: the master switch is off, the conflict matrix (§6.5)
-    warned + disabled the vectorstore, the backend is "disabled", or the selected
-    embedder's optional python extra is missing (C5). Never raises for those
+    warned + disabled the vectorstore, the backend is "disabled", the selected
+    embedder's optional python extra is missing (C5), or the existing Pinecone
+    index dimension does not match the effective embedding dimension (§10.1
+    invariant #4: warn+disable on mismatch, never abort). Never raises for those
     disable paths — a misconfigured vectorstore is disabled, never aborts.
     """
     if not settings.vectorstore.enabled:
@@ -68,5 +73,10 @@ def build_backend(settings: Settings) -> tuple[Embedder, VectorStore] | None:
     except EmbedderExtraMissing:
         # C5: missing extra -> warn+disable (warning already recorded upstream)
         return None
-    store = build_store(settings, embedder)
+    try:
+        store = build_store(settings, embedder)
+    except IndexDimensionMismatch:
+        # §10.1 #4: existing Pinecone index geometry != embedder dim -> warn+disable
+        # at the tool layer (callers return graceful index_disabled, never crash).
+        return None
     return embedder, store

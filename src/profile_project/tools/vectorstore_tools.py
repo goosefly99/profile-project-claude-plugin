@@ -283,13 +283,79 @@ def pp_index_status() -> dict[str, object]:
     }
 
 
+def _ollama_probe(base_url: str, timeout: float) -> bool:
+    """Bounded, fail-closed reachability probe for the ollama daemon (C3).
+
+    A single GET to ``base_url`` within ``timeout`` seconds. Any error, non-2xx,
+    or timeout -> False (fail closed: treated as unreachable -> warn+disable).
+    """
+    import httpx  # base dependency
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.get(base_url)
+        return bool(response.is_success)
+    except Exception:  # noqa: BLE001 - fail closed: any failure == unreachable
+        return False
+
+
+def _dim_probe(settings: Settings, timeout: float) -> tuple[int, int] | None:
+    """Bounded, fail-closed Pinecone dimension probe (C4).
+
+    Returns ``(effective_embedding_dim, pinecone_index_dim)`` or ``None`` on any
+    failure. The effective dim comes from the built embedder; the index dim from
+    a Pinecone ``describe_index`` lookup (same pattern as ``PineconeStore``; NO
+    index is created). Any exception -> ``None`` (fail closed -> C4 warn+disable).
+    """
+    try:
+        from pinecone import Pinecone  # lazy: needs [pinecone]
+
+        api_key = settings.pinecone_api_key
+        index = settings.vectorstore.pinecone.index
+        if api_key is None or index is None:
+            return None
+        embedder = build_embedder(settings)
+        effective_dim = embedder.dimension
+        pc = Pinecone(api_key=api_key.get_secret_value())
+        if not pc.has_index(index):
+            return None
+        desc = pc.describe_index(index)
+        if desc.dimension is None:
+            return None
+        return effective_dim, int(desc.dimension)
+    except Exception:  # noqa: BLE001 - fail closed: any failure -> None (C4 fires)
+        return None
+
+
 @tool_envelope
-def pp_vectorstore_check(dry_run: bool = True) -> dict[str, object]:
-    """Diagnose reachability + dimension; dry-run never writes (§6.5/§10.1)."""
+def pp_vectorstore_check() -> dict[str, object]:
+    """Diagnose vectorstore reachability + dimension (read-only; never writes).
+
+    This tool is inherently a dry-run diagnostic: it NEVER constructs the store
+    client and NEVER writes to disk. It runs the §6.5 conflict matrix with two
+    bounded, fail-closed live probes wired in:
+
+    - C3 (ollama unreachable): a GET to the configured ollama base_url within
+      ``embed_timeout_seconds``; any error/timeout warns + disables.
+    - C4 (Pinecone dimension): a ``describe_index`` lookup compared against the
+      effective embedding dimension; a mismatch or any probe failure warns +
+      disables (no index is ever created).
+
+    ``reachable`` reflects whether the vectorstore survives the conflict matrix
+    (with the above probes folded in): chromadb-local is always reachable;
+    remote/probe-gated backends are reachable only when no disabling conflict
+    fired. ``dimension`` is the embedder's effective dimension when it can be
+    built, else ``None``.
+    """
     settings, _root = _resolved_settings()
     backend = settings.vectorstore.backend
-    # Bounded fail-closed conflict probes (C3/C4); (warnings, vectorstore_enabled).
-    warnings, vectorstore_enabled = run_conflict_detection(settings)
+    # Bounded fail-closed conflict probes (C3 ollama, C4 pinecone-dim) are wired
+    # in here -> (warnings, vectorstore_enabled_post).
+    warnings, vectorstore_enabled = run_conflict_detection(
+        settings,
+        ollama_probe=_ollama_probe,
+        dim_probe=_dim_probe,
+    )
     dimension: int | None = None
     reachable = False
     try:
@@ -297,8 +363,8 @@ def pp_vectorstore_check(dry_run: bool = True) -> dict[str, object]:
         # the store client is intentionally NOT constructed on a dry run.
         embedder = build_embedder(settings)
         dimension = embedder.dimension
-        # chromadb local is always reachable; remote backends fold their
-        # bounded fail-closed probe result into the conflict warnings (§6.5 C3/C4).
+        # chromadb local is always reachable; remote/probe-gated backends are
+        # reachable only when the conflict matrix (incl. C3/C4) did not disable.
         reachable = backend == "chromadb" or vectorstore_enabled
     except EmbedderExtraMissing as exc:
         warnings.append(f"embedder extra missing (treated as unreachable): {exc}")

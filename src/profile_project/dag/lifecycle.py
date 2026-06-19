@@ -21,11 +21,17 @@ _PHASES_BY_NAME = {p.name: p for p in PHASES}
 def _register_phase_outputs(state: RunState, phase: str, now: str) -> None:
     """Register a completing phase's declared outputs into ``available_artifacts``.
 
-    Idempotent: an output type already present on the run (e.g. a hand-seeded ref
-    or a retry) is skipped, never duplicated. The path is the canonical flat
-    repo-relative POSIX artifact location. ``ps.output_artifacts`` is set to the
-    phase's declared output types. This is the single uniform point both agent and
-    deterministic phases pass through, so it is where ``available_artifacts``
+    Idempotent on TYPE: an output type already present on the run (e.g. a
+    hand-seeded ref or a retry) is not duplicated in ``available_artifacts``
+    (the resolver gates on types). The path is the canonical flat repo-relative
+    POSIX artifact location.
+
+    ``ps.output_artifacts`` is set to the flat repo-relative POSIX *paths* of
+    this phase's declared outputs (the ``PhaseBrief.input_artifacts`` contract:
+    downstream briefs hand sub-agents openable PATHS, never artifact type
+    strings). This list always reflects this phase's outputs regardless of the
+    per-type idempotency skip above. This is the single uniform point both agent
+    and deterministic phases pass through, so it is where ``available_artifacts``
     becomes correctly populated as a side effect of the completion contract.
     """
     phase_def = _PHASES_BY_NAME.get(phase)
@@ -34,11 +40,12 @@ def _register_phase_outputs(state: RunState, phase: str, now: str) -> None:
     root = Path(state.config_path).parent
     present = set(state.available_artifact_types())
     ps = state.phases[phase]
-    ps.output_artifacts = list(phase_def.outputs)
+    output_paths: list[str] = []
     for out_type in phase_def.outputs:
+        rel = artifact_path(root, out_type).relative_to(root).as_posix()
+        output_paths.append(rel)
         if out_type in present:
             continue
-        rel = artifact_path(root, out_type).relative_to(root).as_posix()
         state.available_artifacts.append(
             ArtifactRef(
                 type=out_type,
@@ -48,6 +55,7 @@ def _register_phase_outputs(state: RunState, phase: str, now: str) -> None:
             )
         )
         present.add(out_type)
+    ps.output_artifacts = output_paths
 
 
 def state_transition_error(phase: str, current: str, attempted: str) -> PipelineError:

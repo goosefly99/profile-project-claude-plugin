@@ -152,7 +152,11 @@ def test_complete_phase_marks_run_completed_when_terminal(tmp_path: Path) -> Non
     assert state.completed_at is not None
     # The completed phase's declared output is now registered on the run.
     assert "source-index" in state.available_artifact_types()
-    assert state.phases["discover_context"].output_artifacts == ["source-index"]
+    # output_artifacts are flat repo-relative POSIX PATHS (the PhaseBrief input
+    # contract), NOT artifact TYPE strings.
+    assert state.phases["discover_context"].output_artifacts == [
+        ".profile_project/artifacts/source-index.json"
+    ]
 
 
 def test_complete_phase_rejects_non_in_progress(tmp_path: Path) -> None:

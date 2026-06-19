@@ -15,6 +15,9 @@ from profile_project.dag.brief import (
 from profile_project.dag.graph import EDGES
 from profile_project.dag.run_state import RunState
 
+# The flat repo-relative POSIX artifacts dir the real lifecycle emits paths under.
+ARTIFACT_BASE = ".profile_project/artifacts"
+
 
 def test_agent_directive_forbids_extra() -> None:
     d = AgentDirective(
@@ -86,19 +89,22 @@ def _state_with_outputs(tmp_path: Path) -> RunState:
             "error": None,
         }
 
-    artifact_base = "/abs/.profile_project/artifacts"
+    # output_artifacts are the flat repo-relative POSIX *paths* the real
+    # lifecycle produces (artifact_path(root, t).relative_to(root).as_posix()),
+    # i.e. ``.profile_project/artifacts/<type>.json`` — NOT artifact type strings
+    # and NOT abs paths.
     base["phases"] = {
         "analyze_codebase": _phase(
             "analyze_codebase",
-            [f"{artifact_base}/codebase-analysis.json"],
+            [f"{ARTIFACT_BASE}/codebase-analysis.json"],
         ),
         "analyze_docs": _phase(
             "analyze_docs",
-            [f"{artifact_base}/docs-analysis.json"],
+            [f"{ARTIFACT_BASE}/docs-analysis.json"],
         ),
         "analyze_transcripts_notes": _phase(
             "analyze_transcripts_notes",
-            [f"{artifact_base}/context-analysis.json"],
+            [f"{ARTIFACT_BASE}/context-analysis.json"],
         ),
         "synthesize_knowledge": _phase("synthesize_knowledge", []),
     }
@@ -110,20 +116,45 @@ def test_resolve_input_artifacts_collects_upstream_paths_first_seen(
 ) -> None:
     state = _state_with_outputs(tmp_path)
     paths = resolve_input_artifacts(state, "synthesize_knowledge", EDGES)
-    artifact_base = "/abs/.profile_project/artifacts"
     assert paths == [
-        f"{artifact_base}/codebase-analysis.json",
-        f"{artifact_base}/docs-analysis.json",
-        f"{artifact_base}/context-analysis.json",
+        f"{ARTIFACT_BASE}/codebase-analysis.json",
+        f"{ARTIFACT_BASE}/docs-analysis.json",
+        f"{ARTIFACT_BASE}/context-analysis.json",
     ]
 
 
 def test_resolve_input_artifacts_dedups(tmp_path: Path) -> None:
     state = _state_with_outputs(tmp_path)
-    dup = "/abs/.profile_project/artifacts/codebase-analysis.json"
+    dup = f"{ARTIFACT_BASE}/codebase-analysis.json"
     state.phases["analyze_docs"].output_artifacts = [dup]
     paths = resolve_input_artifacts(state, "synthesize_knowledge", EDGES)
     assert paths.count(dup) == 1
+
+
+def test_real_lifecycle_sets_output_artifacts_to_paths(tmp_path: Path) -> None:
+    """The REAL lifecycle (C-1): complete_phase sets ps.output_artifacts to flat
+    repo-relative POSIX *paths*, never artifact TYPE strings — so downstream
+    briefs hand sub-agents openable inputs. Guards against regressing to types."""
+    from profile_project.dag.lifecycle import complete_phase, start_phase
+    from profile_project.dag.run_state import init_run
+
+    run_dir = tmp_path / ".profile_project" / "runs" / "r1"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    state = init_run({}, run_dir)
+
+    start_phase(state, "discover_context")
+    complete_phase(state, "discover_context")
+    start_phase(state, "analyze_codebase")
+    complete_phase(state, "analyze_codebase")
+
+    ac = state.phases["analyze_codebase"]
+    # PATH, not the "codebase-analysis" TYPE string.
+    assert ac.output_artifacts == [f"{ARTIFACT_BASE}/codebase-analysis.json"]
+    assert "codebase-analysis" not in ac.output_artifacts
+
+    # And the downstream brief therefore resolves an openable PATH.
+    paths = resolve_input_artifacts(state, "synthesize_knowledge", EDGES)
+    assert f"{ARTIFACT_BASE}/codebase-analysis.json" in paths
 
 
 def test_resolve_model_prefers_phase_then_default_then_none() -> None:
@@ -165,11 +196,10 @@ def test_build_phase_brief_agent_phase_has_directive_with_resolved_model(
     assert isinstance(directive, dict)
     assert directive["subagent_type"] == "synthesize_knowledge"
     assert directive["model"] is None  # not in phase_models -> inherit
-    artifact_base = "/abs/.profile_project/artifacts"
     assert brief["input_artifacts"] == [
-        f"{artifact_base}/codebase-analysis.json",
-        f"{artifact_base}/docs-analysis.json",
-        f"{artifact_base}/context-analysis.json",
+        f"{ARTIFACT_BASE}/codebase-analysis.json",
+        f"{ARTIFACT_BASE}/docs-analysis.json",
+        f"{ARTIFACT_BASE}/context-analysis.json",
     ]
     assert "pp_store_artifact" in str(brief["completion_contract"])
 

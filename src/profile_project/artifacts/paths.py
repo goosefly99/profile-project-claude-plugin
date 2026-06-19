@@ -14,28 +14,24 @@ if TYPE_CHECKING:
 PROFILE_TREE_DIRNAME = ".profile_project"
 
 
-def artifacts_dir(root: Path, run_id: str | None = None) -> Path:
+def artifacts_dir(root: Path) -> Path:
     """Absolute path to the gitignored per-project artifacts directory (§6b.1).
 
-    With ``run_id`` the artifacts dir is scoped under ``runs/<run_id>``; without
-    it the canonical flat ``.profile_project/artifacts`` location is used.
+    Artifacts are stored flat (§7.5 flat-storage invariant): always the canonical
+    ``.profile_project/artifacts`` location, never run-scoped.
     """
-    base = Path(root) / PROFILE_TREE_DIRNAME
-    if run_id is not None:
-        base = base / "runs" / run_id
-    return base / "artifacts"
+    return Path(root) / PROFILE_TREE_DIRNAME / "artifacts"
 
 
-def artifact_path(
-    root: Path, artifact_type: str, run_id: str | None = None
-) -> Path:
+def artifact_path(root: Path, artifact_type: str) -> Path:
     """Stable absolute path for a stored artifact of ``artifact_type`` (§8 / §7.5).
 
-    Raises ``ValueError`` for an ``artifact_type`` not in ``ARTIFACT_TYPES``.
+    Always the flat ``.profile_project/artifacts/<type>.json`` location. Raises
+    ``ValueError`` for an ``artifact_type`` not in ``ARTIFACT_TYPES``.
     """
     if artifact_type not in ARTIFACT_TYPES:
         raise ValueError(f"unknown artifact type: {artifact_type!r}")
-    return artifacts_dir(root, run_id) / f"{artifact_type}.json"
+    return artifacts_dir(root) / f"{artifact_type}.json"
 
 
 def profile_dirs(settings: Settings, root: Path) -> tuple[Path, Path]:
