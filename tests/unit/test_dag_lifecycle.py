@@ -12,7 +12,12 @@ from profile_project.dag.lifecycle import (
     start_phase,
     state_transition_error,
 )
-from profile_project.dag.run_state import ArtifactRef, PipelineError, RunState
+from profile_project.dag.run_state import (
+    ArtifactRef,
+    PhaseState,
+    PipelineError,
+    RunState,
+)
 
 
 def test_state_transition_error_envelope_shape() -> None:
@@ -123,17 +128,31 @@ def test_complete_phase_transitions_in_progress_to_completed(tmp_path: Path) -> 
     # analyze_codebase still pending -> run not terminal yet.
     assert state.status == "running"
     assert state.completed_at is None
+    # Output registration is idempotent: the hand-seeded source-index ref is not
+    # duplicated by complete_phase.
+    source_refs = [a for a in state.available_artifacts if a.type == "source-index"]
+    assert len(source_refs) == 1
+    assert source_refs[0].path == "/abs/.profile_project/artifacts/source-index.json"
 
 
 def test_complete_phase_marks_run_completed_when_terminal(tmp_path: Path) -> None:
     state = _new_state(tmp_path)
-    # Drop analyze_codebase so discover_context is the only schedulable phase,
-    # and pre-skip it so the resolver yields [] after completion.
+    # complete_phase now registers discover_context's declared output
+    # ("source-index") into available_artifacts (the corrected contract). With
+    # source-index available, the full-DAG resolver would otherwise offer the
+    # source-index consumers (analyze_codebase/analyze_docs/
+    # analyze_transcripts_notes). Skip all three so the resolver yields [] after
+    # completion and discover_context is genuinely the last schedulable phase.
     state.phases["analyze_codebase"].status = "skipped"
+    for consumer in ("analyze_docs", "analyze_transcripts_notes"):
+        state.phases[consumer] = PhaseState(phase_name=consumer, status="skipped")
     start_phase(state, "discover_context")
     complete_phase(state, "discover_context")
     assert state.status == "completed"
     assert state.completed_at is not None
+    # The completed phase's declared output is now registered on the run.
+    assert "source-index" in state.available_artifact_types()
+    assert state.phases["discover_context"].output_artifacts == ["source-index"]
 
 
 def test_complete_phase_rejects_non_in_progress(tmp_path: Path) -> None:

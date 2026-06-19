@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from profile_project.artifacts.paths import artifact_path
 from profile_project.dag.graph import EDGES, PHASES
 from profile_project.dag.resolver import resolve_next_phases
 from profile_project.dag.run_state import (
+    ArtifactRef,
     PhaseState,
     PipelineError,
     RunState,
@@ -10,6 +14,40 @@ from profile_project.dag.run_state import (
     persist,
     utc_now_iso,
 )
+
+_PHASES_BY_NAME = {p.name: p for p in PHASES}
+
+
+def _register_phase_outputs(state: RunState, phase: str, now: str) -> None:
+    """Register a completing phase's declared outputs into ``available_artifacts``.
+
+    Idempotent: an output type already present on the run (e.g. a hand-seeded ref
+    or a retry) is skipped, never duplicated. The path is the canonical flat
+    repo-relative POSIX artifact location. ``ps.output_artifacts`` is set to the
+    phase's declared output types. This is the single uniform point both agent and
+    deterministic phases pass through, so it is where ``available_artifacts``
+    becomes correctly populated as a side effect of the completion contract.
+    """
+    phase_def = _PHASES_BY_NAME.get(phase)
+    if phase_def is None:
+        return
+    root = Path(state.config_path).parent
+    present = set(state.available_artifact_types())
+    ps = state.phases[phase]
+    ps.output_artifacts = list(phase_def.outputs)
+    for out_type in phase_def.outputs:
+        if out_type in present:
+            continue
+        rel = artifact_path(root, out_type).relative_to(root).as_posix()
+        state.available_artifacts.append(
+            ArtifactRef(
+                type=out_type,
+                path=rel,
+                phase=phase,
+                created_at=now,
+            )
+        )
+        present.add(out_type)
 
 
 def state_transition_error(phase: str, current: str, attempted: str) -> PipelineError:
@@ -70,6 +108,7 @@ def complete_phase(state: RunState, phase: str) -> RunState:
     now = utc_now_iso()
     ps.status = "completed"
     ps.completed_at = now
+    _register_phase_outputs(state, phase, now)
     state.updated_at = now
     append_event(state, "phase_completed", phase=phase, at=now)
     if _is_run_terminal(state):
