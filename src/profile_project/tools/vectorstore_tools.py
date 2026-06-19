@@ -38,6 +38,22 @@ CHUNK_CONFIG = ChunkConfig(
     chunk_size=512, chunk_overlap=64, token_encoding="cl100k_base"
 )
 
+_Scalar = str | int | float | bool
+
+
+def _scalar_metadata(meta: dict[str, object]) -> dict[str, _Scalar]:
+    """Keep only Chroma-valid scalar values; drop None and non-scalars (§10.4).
+
+    ChromaDB rejects any metadata value that is not ``str|int|float|bool`` (a
+    nested dict such as the chunk ``span``, or ``None`` for an absent
+    ``page_type``/``title``), so we flatten/drop those before ``store.add``.
+    """
+    return {
+        key: value
+        for key, value in meta.items()
+        if isinstance(value, (str, int, float, bool))
+    }
+
 
 def _resolved_settings() -> tuple[Settings, Path]:
     root = resolve_project_root()
@@ -124,7 +140,15 @@ def _build_index(run_id: str | None, *, reset_geometry: bool) -> dict[str, objec
             embedder_version=embedder_version,
             content_hash=c_hash,
         )
-        meta = dict(chunk.metadata)
+        raw_meta = dict(chunk.metadata)
+        # The nested ``span`` dict is not a Chroma scalar; flatten it into the
+        # already-computed start_token/end_token scalars and drop the dict.
+        raw_meta.pop("span", None)
+        # Drop any remaining non-scalar / None values (e.g. page_type/title may
+        # be None for real projects) so ChromaDB accepts every metadata value.
+        meta: dict[str, object] = dict(_scalar_metadata(raw_meta))
+        meta["start_token"] = start_token
+        meta["end_token"] = end_token
         meta["embedder_version"] = embedder_version
         meta["embedding_model"] = embedder.model_name
         meta["embedding_provider"] = embedder.embedding_provider

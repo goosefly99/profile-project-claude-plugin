@@ -188,6 +188,7 @@ class _RecordingStore(_FakeStore):
     def __init__(self, count: int = 0) -> None:
         super().__init__(count)
         self.added_ids: list[str] = []
+        self.added_metadatas: list[dict[str, object]] = []
         self.deleted_ids: list[str] = []
         self.reset_called = False
 
@@ -199,6 +200,8 @@ class _RecordingStore(_FakeStore):
         metadatas: list[dict[str, object]] | None = None,
     ) -> None:
         self.added_ids.extend(ids)
+        if metadatas is not None:
+            self.added_metadatas.extend(metadatas)
         self._count = len(self.added_ids)
 
     def delete(
@@ -291,6 +294,63 @@ def test_index_build_chunks_embeds_upserts_and_stores_artifact(
     assert stored["type"] == "vectorstore-index"
     # Build does NOT reset geometry.
     assert store.reset_called is False
+
+
+def test_index_build_metadata_is_chroma_scalar_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression: ChromaDB only accepts scalar metadata values. The chunk's
+    # nested ``span`` dict (and any None page_type/title for real projects)
+    # must never reach store.add (§10.4).
+    _write_config(tmp_path)
+    monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
+    _force_initialized(monkeypatch)
+    ctx = tmp_path / "profile" / "context"
+    ctx.mkdir(parents=True)
+    # Body long enough to produce at least one chunk that carries a span.
+    (ctx / "overview.md").write_text(
+        "# Overview\n\n" + ("profile project profiling. " * 40) + "\n",
+        encoding="utf-8",
+    )
+    store = _RecordingStore()
+
+    # An agent page whose page_type/title are None (the real-project case that
+    # also trips the non-scalar metadata defect).
+    monkeypatch.setattr(
+        vt,
+        "load_artifact",
+        lambda root, t, run_id=None: {
+            "artifact_type": "agent-pages",
+            "output_dir": "profile/context",
+            "pages": [
+                {"id": "overview", "path": "profile/context/overview.md",
+                 "page_type": None, "title": None},
+            ],
+            "page_count": 1,
+        } if t == "agent-pages" and run_id is None else None,
+    )
+    monkeypatch.setattr(vt, "build_backend", lambda _s: (_FakeEmbedder(), store))
+    monkeypatch.setattr(
+        vt, "store_artifact",
+        lambda root, run_id, phase, artifact_type, content: {"type": artifact_type},
+    )
+
+    result = vt.pp_index_build(run_id="r1")
+    assert result["ok"] is True
+    assert len(store.added_metadatas) > 0
+    for meta in store.added_metadatas:
+        assert "span" not in meta
+        for key, value in meta.items():
+            assert isinstance(value, (str, int, float, bool)), (
+                f"non-scalar metadata for {key!r}: {value!r}"
+            )
+            assert value is not None
+        # The scalar span fields and query-path keys survive sanitization.
+        assert isinstance(meta["start_token"], int)
+        assert isinstance(meta["end_token"], int)
+        assert "path" in meta
+        assert "embedder_version" in meta
+        assert "source_type" in meta
 
 
 def test_index_build_replaces_prior_chunk_set_without_reset(
