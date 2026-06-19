@@ -14,7 +14,7 @@ def _read(path: pathlib.Path) -> str:
 
 
 def test_pyproject_is_the_plugin_root_anchor() -> None:
-    # parents[2] from tests/unit/<file> must be the plugin root that holds pyproject.toml.
+    # parents[2] from tests/unit/<file> must be the plugin root holding pyproject.toml.
     assert (PLUGIN_ROOT / "pyproject.toml").is_file()
     assert (PLUGIN_ROOT / ".claude-plugin" / "plugin.json").is_file()
 
@@ -35,13 +35,21 @@ def test_readme_exists_and_covers_required_sections() -> None:
 
 def test_readme_documents_zero_setup_default_and_extras() -> None:
     text = _read(README_PATH)
-    # Zero-setup default backends (sentence-transformers + chromadb) and the install set.
+    # Zero-setup default backends (sentence-transformers + chromadb) + install set.
     assert "sentence-transformers" in text
     assert "chromadb" in text
     assert "[local-embeddings]" in text
     assert "[chroma]" in text
     # Every §14.1 extra name is documented.
-    for extra in ("[chroma]", "[pinecone]", "[openai]", "[local-embeddings]", "[ollama]", "[all]"):
+    extras = (
+        "[chroma]",
+        "[pinecone]",
+        "[openai]",
+        "[local-embeddings]",
+        "[ollama]",
+        "[all]",
+    )
+    for extra in extras:
         assert extra in text, f"README missing extra: {extra}"
 
 
@@ -52,7 +60,7 @@ def test_readme_places_chromadb_under_the_chroma_extra() -> None:
     chroma_rows = [
         line for line in text.splitlines() if "[chroma]" in line and "chromadb" in line
     ]
-    assert chroma_rows, "README extras matrix must list chromadb under the [chroma] extra"
+    assert chroma_rows, "extras matrix must list chromadb under the [chroma] extra"
 
 
 def test_readme_documents_stdio_launch_line() -> None:
@@ -130,21 +138,27 @@ def test_env_example_secrets_have_no_real_values() -> None:
     # The two secret rows MUST be present but empty (no value after '=').
     for line in _read(ENV_EXAMPLE_PATH).splitlines():
         stripped = line.strip()
-        if stripped.startswith("PROFILE_PROJECT_OPENAI_API_KEY=") or stripped.startswith(
-            "PROFILE_PROJECT_PINECONE_API_KEY="
+        if stripped.startswith(
+            ("PROFILE_PROJECT_OPENAI_API_KEY=", "PROFILE_PROJECT_PINECONE_API_KEY=")
         ):
             key, _, value = stripped.partition("=")
-            assert value == "", f"secret {key} must be empty in .env.example, got {value!r}"
+            assert value == "", f"secret {key} must be empty, got {value!r}"
 
 
 def test_marketplace_doc_has_verbatim_entry_and_publish_precondition() -> None:
     text = _read(MARKETPLACE_DOC_PATH)
     # The §14.4 entry fields, exact.
     assert '"name": "profile-project-auto-dev"' in text
-    assert '"url": "https://github.com/goosefly99/profile-project-claude-plugin.git"' in text
+    url_field = (
+        '"url": "https://github.com/goosefly99/profile-project-claude-plugin.git"'
+    )
+    assert url_field in text
     assert '"ref": "auto_dev"' in text
     assert '"version": "0.1.0"' in text
-    assert '"homepage": "https://github.com/goosefly99/profile-project-claude-plugin"' in text
+    homepage_field = (
+        '"homepage": "https://github.com/goosefly99/profile-project-claude-plugin"'
+    )
+    assert homepage_field in text
     # Where to add it.
     assert "claude-plugins-auto-dev/.claude-plugin/marketplace.json" in text
     # The publish precondition (§14.4): branch must exist + manifest name/version match.
@@ -172,6 +186,6 @@ def test_plugin_manifest_version_matches_marketplace_entry() -> None:
     start = entry_text.index("```json") + len("```json")
     end = entry_text.index("```", start)
     entry = json.loads(entry_text[start:end])
-    # The publish precondition requires the manifest name+version to match the marketplace entry.
+    # The publish precondition requires manifest name+version to match the entry.
     assert manifest["name"] == entry["name"] == "profile-project-auto-dev"
     assert manifest["version"] == entry["version"] == "0.1.0"
