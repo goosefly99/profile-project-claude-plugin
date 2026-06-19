@@ -1,8 +1,6 @@
 # src/profile_project/vectorstore/pinecone_store.py
 from __future__ import annotations
 
-from pinecone import Pinecone
-
 from profile_project.vectorstore.protocols import QueryResult
 
 
@@ -41,6 +39,8 @@ class PineconeStore:
         collection: str,
         namespace: str | None = None,
     ) -> None:
+        from pinecone import Pinecone  # lazy: needs the [pinecone] extra (§10.1)
+
         self._index_name = index
         # Pinecone uses "" for the default namespace; never None at call sites.
         self._namespace: str = namespace if namespace is not None else ""

@@ -12,6 +12,21 @@ from profile_project.vectorstore.pinecone_store import (
 )
 
 
+def _patch_pinecone(monkeypatch: pytest.MonkeyPatch, pc: MagicMock) -> None:
+    # PineconeStore imports `from pinecone import Pinecone` lazily inside
+    # __init__ (so the MCP server starts without the optional [pinecone] extra).
+    # Inject a fake `pinecone` module so that lazy import resolves to our stub --
+    # the same sys.modules convention test_embedders.py uses for openai/st.
+    import importlib.machinery
+    import sys
+    import types
+
+    module = types.ModuleType("pinecone")
+    module.__spec__ = importlib.machinery.ModuleSpec("pinecone", loader=None)
+    module.Pinecone = lambda api_key: pc  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pinecone", module)
+
+
 def _fake_pc(*, has_index: bool, dimension: int, ready: bool = True) -> MagicMock:
     pc = MagicMock(name="Pinecone")
     pc.has_index.return_value = has_index
@@ -39,10 +54,7 @@ def test_connects_by_host_and_never_creates_index(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pc = _fake_pc(has_index=True, dimension=384)
-    monkeypatch.setattr(
-        "profile_project.vectorstore.pinecone_store.Pinecone",
-        lambda api_key: pc,
-    )
+    _patch_pinecone(monkeypatch, pc)
     store = PineconeStore(
         api_key="k",
         index="my-index",
@@ -61,10 +73,7 @@ def test_connects_by_host_and_never_creates_index(
 
 def test_missing_index_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
     pc = _fake_pc(has_index=False, dimension=384)
-    monkeypatch.setattr(
-        "profile_project.vectorstore.pinecone_store.Pinecone",
-        lambda api_key: pc,
-    )
+    _patch_pinecone(monkeypatch, pc)
     with pytest.raises(ValueError, match="my-index"):
         PineconeStore(api_key="k", index="my-index", embedding_dim=384, collection="c")
     pc.Index.assert_not_called()
@@ -74,10 +83,7 @@ def test_dimension_mismatch_raises_index_dimension_mismatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pc = _fake_pc(has_index=True, dimension=1536)
-    monkeypatch.setattr(
-        "profile_project.vectorstore.pinecone_store.Pinecone",
-        lambda api_key: pc,
-    )
+    _patch_pinecone(monkeypatch, pc)
     with pytest.raises(IndexDimensionMismatch) as excinfo:
         PineconeStore(api_key="k", index="my-index", embedding_dim=384, collection="c")
     assert excinfo.value.index_dim == 1536
@@ -87,10 +93,7 @@ def test_dimension_mismatch_raises_index_dimension_mismatch(
 
 def test_add_and_query_use_byo_vectors(monkeypatch: pytest.MonkeyPatch) -> None:
     pc = _fake_pc(has_index=True, dimension=384)
-    monkeypatch.setattr(
-        "profile_project.vectorstore.pinecone_store.Pinecone",
-        lambda api_key: pc,
-    )
+    _patch_pinecone(monkeypatch, pc)
     store = PineconeStore(
         api_key="k",
         index="my-index",
@@ -124,10 +127,7 @@ def test_add_and_query_use_byo_vectors(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_count_reads_namespace_vector_count(monkeypatch: pytest.MonkeyPatch) -> None:
     pc = _fake_pc(has_index=True, dimension=384)
-    monkeypatch.setattr(
-        "profile_project.vectorstore.pinecone_store.Pinecone",
-        lambda api_key: pc,
-    )
+    _patch_pinecone(monkeypatch, pc)
     store = PineconeStore(
         api_key="k", index="my-index", embedding_dim=384, collection="c"
     )

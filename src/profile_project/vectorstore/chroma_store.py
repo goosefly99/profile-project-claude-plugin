@@ -1,8 +1,6 @@
 # src/profile_project/vectorstore/chroma_store.py
 from __future__ import annotations
 
-import chromadb
-
 from profile_project.vectorstore.protocols import QueryResult
 
 
@@ -16,6 +14,8 @@ class ChromaDBStore:
     """
 
     def __init__(self, persist_path: str, collection: str) -> None:
+        import chromadb  # lazy: needs the [chroma] extra (§10.1)
+
         self._persist_path = persist_path
         self._collection_name = collection
         # The Path -> str cast is load-bearing: PersistentClient wants a str.

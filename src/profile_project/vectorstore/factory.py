@@ -79,4 +79,10 @@ def build_backend(settings: Settings) -> tuple[Embedder, VectorStore] | None:
         # §10.1 #4: existing Pinecone index geometry != embedder dim -> warn+disable
         # at the tool layer (callers return graceful index_disabled, never crash).
         return None
+    except ImportError:
+        # Defense-in-depth: the backend's optional extra (chromadb/pinecone) is
+        # missing. Normally unreachable — conflict C5a warn+disables upstream —
+        # but the store imports its extra lazily, so guard the construct path too:
+        # a missing dependency disables the vectorstore, it never aborts startup.
+        return None
     return embedder, store
