@@ -1,7 +1,7 @@
 {
   "name": "profile-project-auto-dev",
   "description": "Profiles a project into agent-facing context, a human guide, and a queryable vectorstore",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": { "name": "olive" },
   "repository": "https://github.com/goosefly99/profile-project-claude-plugin.git"
 }
