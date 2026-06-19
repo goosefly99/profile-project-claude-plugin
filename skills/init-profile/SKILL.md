@@ -16,8 +16,8 @@ enforced in the server, not the skill.
    `CLAUDE_PROJECT_DIR` → `PWD` → cwd). Confirm it with the user.
 2. **Diagnose (read-only, pre-init).** Run `pp_config_validate` (provenance +
    warnings + post-conflict `vectorstore_enabled`) and `pp_vectorstore_check`
-   (dry-run reachability/dimension; never writes). Surface issues before
-   writing. These tools leave zero filesystem residue pre-init.
+   (read-only reachability/dimension probes; never writes). Surface issues
+   before writing. These tools leave zero filesystem residue pre-init.
 3. **Collect/confirm config**: vectorstore `enabled` + `backend`
    (`chromadb` local default | `pinecone` existing-index-only | `disabled`);
    embeddings `method` (`sentence-transformers` default | `openai` | `ollama` |

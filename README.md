@@ -41,14 +41,44 @@ backend is a **warn + disable**, never a crash):
 | `[ollama]` | (httpx only — already base) | Ollama embeddings |
 | `[all]` | union of the above | everything |
 
-**Zero-setup default.** The out-of-the-box path is **sentence-transformers** (local,
-offline after first model pull, dim 384) for embeddings + **chromadb** (local on-disk)
-for storage. Install the zero-setup default with `[local-embeddings]` and `[chroma]` (or
-`[all]`):
+**Recommended default backend.** The recommended path is **sentence-transformers**
+(local, offline after first model pull, dim 384) for embeddings + **chromadb** (local
+on-disk) for storage — no Docker, no external service, no API key. For a manual/dev
+checkout, install it with `[local-embeddings]` and `[chroma]` (or `[all]`):
 
 ```
 uv pip install -e ".[local-embeddings,chroma]"
 ```
+
+### Enabling the vectorstore on a plugin install (opt-in)
+
+The server **always starts** on a plain install, but the vectorstore is **off by
+default**: the stdio launch command (`uv run … python -m profile_project`) installs only
+the base dependencies, so the embedding + store libraries are absent and the conflict
+matrix **warns + disables** the vectorstore (the DAG still runs and produces both guides).
+This keeps cold start fast — `sentence-transformers` pulls in `torch` (~2 GB), which is
+too heavy to download on every launch.
+
+To turn the vectorstore on, add the extras to the launch command in the installed
+plugin's `.mcp.json` (`${CLAUDE_PLUGIN_ROOT}/.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "profile-project": {
+      "command": "uv",
+      "args": ["run", "--extra", "local-embeddings", "--extra", "chroma",
+               "--directory", "${CLAUDE_PLUGIN_ROOT}", "python", "-m", "profile_project"]
+    }
+  }
+}
+```
+
+The **first** launch after adding the extras resolves and downloads them (slow, one
+time); later launches reuse the synced environment. Swap in `--extra pinecone` /
+`--extra openai` (or `--extra all`) for the corresponding backends. Every vectorstore
+backend needs at least one extra; only `ollama` embeddings run on the base install (httpx
+is a base dependency) — but a store backend (`chroma` or `pinecone`) is still required.
 
 ## Initialization
 
@@ -59,7 +89,7 @@ artifact — this gate is enforced in the MCP server, not just the skill.
 /profile-project:init
 ```
 
-`init` runs read-only diagnostics (`pp_config_validate`, `pp_vectorstore_check` dry-run),
+`init` runs read-only diagnostics (`pp_config_validate`, `pp_vectorstore_check`),
 collects/confirms config, validates that required secrets exist in your environment, then
 calls the server tool `pp_init_project`, which transactionally writes
 `.profile_project_config.json`, the gitignored `.profile_project/` tree, the
@@ -124,10 +154,12 @@ DAG still runs and produces the guides).
 
 - **"not_initialized" on a tool call.** Run `/profile-project:init` first. The gate is
   server-enforced; no mutating tool writes before initialization.
-- **Vectorstore silently disabled.** Run `pp_config_validate` and `pp_vectorstore_check`
-  (dry-run); a missing extra (`[chroma]`/`[pinecone]`/`[openai]`/`[local-embeddings]`),
-  missing API key, missing Pinecone index ref, unreachable Ollama host, or dimension
-  mismatch all warn + disable rather than crash. The warning names the exact cause.
+- **Vectorstore silently disabled.** Run `pp_config_validate` and `pp_vectorstore_check`;
+  a missing extra (`[chroma]`/`[pinecone]`/`[openai]`/`[local-embeddings]`), missing API
+  key, missing Pinecone index ref, unreachable Ollama host, or dimension mismatch all warn
+  + disable rather than crash. The warning names the exact cause. On a **plugin install**
+  the most common cause is that the launch command installs only base deps — see
+  *Enabling the vectorstore on a plugin install* above to add the `--extra` flags.
 - **`pp_query` returns `index_disabled` / `index_empty`.** The vectorstore is off, or no
   vectors have been built yet — run `/profile-project:profile` (which runs
   `build_vectorstore`) or check `pp_index_status`.
