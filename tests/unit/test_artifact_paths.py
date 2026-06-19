@@ -10,7 +10,11 @@ from profile_project.artifacts.paths import (
     profile_dirs,
     resolve_context_dir,
 )
-from profile_project.config.settings import Settings
+from profile_project.config.settings import (
+    OutputSettings,
+    ProfileSettings,
+    Settings,
+)
 
 
 def test_artifact_path_builds_under_gitignored_tree(tmp_path: Path) -> None:
@@ -29,8 +33,10 @@ def test_artifact_path_rejects_unknown_type(tmp_path: Path) -> None:
 
 def test_profile_dirs_joins_root_with_output_dirs(tmp_path: Path) -> None:
     settings = Settings(
-        profile={"name": "demo"},
-        output={"context_dir": "profile/context", "guide_dir": "profile/guide"},
+        profile=ProfileSettings(name="demo"),
+        output=OutputSettings(
+            context_dir="profile/context", guide_dir="profile/guide"
+        ),
     )
     context_dir, guide_dir = profile_dirs(settings, tmp_path)
     assert context_dir == tmp_path / "profile" / "context"
@@ -41,8 +47,10 @@ def test_resolve_context_dir_matches_profile_dirs_first_element(
     tmp_path: Path,
 ) -> None:
     settings = Settings(
-        profile={"name": "demo"},
-        output={"context_dir": "profile/context", "guide_dir": "profile/guide"},
+        profile=ProfileSettings(name="demo"),
+        output=OutputSettings(
+            context_dir="profile/context", guide_dir="profile/guide"
+        ),
     )
     expected = profile_dirs(settings, tmp_path)[0]
     assert resolve_context_dir(settings, tmp_path) == expected

@@ -160,7 +160,9 @@ def test_edges_are_the_twelve_fixed_edges_in_order() -> None:
 
 
 def test_assert_dag_accepts_the_fixed_graph() -> None:
-    assert assert_dag(PHASES, EDGES) is None
+    # assert_dag returns None and raises on an invalid graph; a clean return
+    # (no exception) is the success signal for the fixed graph.
+    assert_dag(PHASES, EDGES)
 
 
 def test_assert_dag_rejects_a_cycle() -> None:

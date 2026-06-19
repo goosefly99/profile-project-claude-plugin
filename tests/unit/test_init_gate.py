@@ -272,7 +272,9 @@ def test_gated_tool_leaves_zero_residue(
     )
     monkeypatch.setenv("PROFILE_PROJECT_PROJECT_DIR", str(tmp_path))
     result = _ct.pp_config_set("vectorstore.collection", "x")
-    assert result["error"]["code"] == "not_initialized"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "not_initialized"
     assert not (tmp_path / ".profile_project").exists()
     assert not (tmp_path / ".profile_project" / "chroma").exists()
 

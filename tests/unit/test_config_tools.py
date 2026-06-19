@@ -14,7 +14,7 @@ def _write_config(root: Path) -> Path:
         "vectorstore": {"enabled": True, "backend": "chromadb"},
         "embeddings": {"method": "sentence-transformers"},
     }
-    path = root / CONFIG_FILENAME
+    path: Path = root / CONFIG_FILENAME
     path.write_text(json.dumps(cfg), encoding="utf-8")
     return path
 
@@ -72,7 +72,9 @@ def test_pp_init_project_bootstraps_all_or_nothing(project: Path) -> None:
     assert (project / ".profile_project" / "artifacts").is_dir()
     gitignore = (project / ".gitignore").read_text(encoding="utf-8")
     assert ".profile_project/" in gitignore
-    assert ".profile_project/" in result["created"]
+    created = result["created"]
+    assert isinstance(created, list)
+    assert ".profile_project/" in created
 
 
 def test_pp_init_project_idempotent_preserves_runs(project: Path) -> None:
@@ -90,7 +92,9 @@ def test_pp_init_project_rejects_secret_in_json(project: Path) -> None:
     config = {"openai_api_key": "sk-leaked", "embeddings": {"method": "openai"}}
     result = config_tools.pp_init_project(config)
     assert result["ok"] is False
-    assert result["error"]["code"] == "forbidden_secret"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "forbidden_secret"
     assert not (project / ".profile_project").exists()
 
 
@@ -102,14 +106,18 @@ def test_pp_init_project_requires_env_secret(
               "embeddings": {"method": "openai"}}
     result = config_tools.pp_init_project(config)
     assert result["ok"] is False
-    assert result["error"]["code"] == "missing_secret"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "missing_secret"
     assert not (project / ".profile_project").exists()
 
 
 def test_pp_config_set_refused_pre_init(project: Path) -> None:
     result = config_tools.pp_config_set("vectorstore.collection", "renamed")
     assert result["ok"] is False
-    assert result["error"]["code"] == "not_initialized"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "not_initialized"
     # no write happened: collection still default in resolved config
     assert "renamed" not in (project / CONFIG_FILENAME).read_text(encoding="utf-8")
 
@@ -134,7 +142,9 @@ def test_pp_init_project_rejects_invalid_candidate_and_persists_nothing(
     }
     result = config_tools.pp_init_project(bad)
     assert result["ok"] is False
-    assert result["error"]["code"] == "invalid_config"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "invalid_config"
     assert not (tmp_path / CONFIG_FILENAME).exists()
     assert not (tmp_path / ".profile_project").exists()
 
@@ -168,6 +178,8 @@ def test_pp_config_set_invalid_value_restores_prior_config(project: Path) -> Non
     before = (project / CONFIG_FILENAME).read_text(encoding="utf-8")
     result = config_tools.pp_config_set("totally_unknown_key", "x")
     assert result["ok"] is False
-    assert result["error"]["code"] == "invalid_config"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "invalid_config"
     # the live config is byte-for-byte restored
     assert (project / CONFIG_FILENAME).read_text(encoding="utf-8") == before

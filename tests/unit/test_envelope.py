@@ -91,10 +91,12 @@ def test_require_init_refuses_not_initialized(monkeypatch: object) -> None:
 
     result = handler()
     assert result["ok"] is False
-    assert result["error"]["code"] == "not_initialized"
-    assert result["error"]["resolved_root"] == str(Path("/abs/proj"))
-    assert result["error"]["remedy"] == "/profile-project:init"
-    assert result["error"]["retriable"] is False
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "not_initialized"
+    assert err["resolved_root"] == str(Path("/abs/proj"))
+    assert err["remedy"] == "/profile-project:init"
+    assert err["retriable"] is False
 
 
 def test_require_init_refuses_moved_root(monkeypatch: object) -> None:
@@ -111,10 +113,12 @@ def test_require_init_refuses_moved_root(monkeypatch: object) -> None:
         raise AssertionError("handler must not run after a move")
 
     result = handler()
-    assert result["error"]["code"] == "project_root_moved"
-    assert result["error"]["stamped_root"] == "/old/proj"
-    assert result["error"]["resolved_root"] == str(Path("/new/proj"))
-    assert result["error"]["remedy"] == "/profile-project:init --reinit"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "project_root_moved"
+    assert err["stamped_root"] == "/old/proj"
+    assert err["resolved_root"] == str(Path("/new/proj"))
+    assert err["remedy"] == "/profile-project:init --reinit"
 
 
 def test_require_init_passes_through_when_initialized(monkeypatch: object) -> None:

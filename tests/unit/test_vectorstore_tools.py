@@ -61,8 +61,10 @@ def test_query_refuses_pre_init(
 
     result = vt.pp_query("how is config resolved?")
     assert result["ok"] is False
-    assert result["error"]["code"] == "not_initialized"
-    assert result["error"]["remedy"] == "/profile-project:init"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "not_initialized"
+    assert err["remedy"] == "/profile-project:init"
     assert not (tmp_path / ".profile_project").exists()
 
 
@@ -137,7 +139,9 @@ def test_query_index_disabled(
     monkeypatch.setattr(vt, "build_backend", lambda _s: None)
     result = vt.pp_query("q")
     assert result["ok"] is False
-    assert result["error"]["code"] == "index_disabled"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "index_disabled"
 
 
 def test_query_index_empty(
@@ -154,8 +158,10 @@ def test_query_index_empty(
     monkeypatch.setattr(vt, "build_backend", lambda _s: (_NoEmbed(), _FakeStore(0)))
     result = vt.pp_query("q")
     assert result["ok"] is False
-    assert result["error"]["code"] == "index_empty"
-    assert result["error"]["retriable"] is True
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "index_empty"
+    assert err["retriable"] is True
 
 
 def test_query_returns_ranked_attributed_hits(
@@ -169,9 +175,12 @@ def test_query_returns_ranked_attributed_hits(
     result = vt.pp_query("how is config resolved?", top_k=5)
     assert result["ok"] is True
     hits = result["hits"]
+    assert isinstance(hits, list)
     assert [h["id"] for h in hits] == ["c2", "c1"]  # sorted by descending score
-    assert hits[0]["path"] == "profile/context/overview.md"
-    assert hits[0]["title"] == "Overview"
+    h0 = hits[0]
+    assert isinstance(h0, dict)
+    assert h0["path"] == "profile/context/overview.md"
+    assert h0["title"] == "Overview"
     assert store.queried == [[0.1, 0.2, 0.3]]
 
 
@@ -266,6 +275,7 @@ def test_index_build_chunks_embeds_upserts_and_stores_artifact(
     result = vt.pp_index_build(run_id="r1")
     assert result["ok"] is True
     vsi = result["vectorstore_index"]
+    assert isinstance(vsi, dict)
     assert vsi["artifact_type"] == "vectorstore-index"
     assert vsi["backend"] == "chromadb"
     assert vsi["embedder_version"] == "sentence-transformers/all-MiniLM-L6-v2@hf-fp32"

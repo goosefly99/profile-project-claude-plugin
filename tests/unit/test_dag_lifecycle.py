@@ -94,7 +94,9 @@ def test_start_phase_rejects_non_pending(tmp_path: Path) -> None:
     start_phase(state, "discover_context")
     with pytest.raises(PipelineError) as exc:
         start_phase(state, "discover_context")
-    assert exc.value.envelope["error"]["current_status"] == "in_progress"
+    err = exc.value.envelope["error"]
+    assert isinstance(err, dict)
+    assert err["current_status"] == "in_progress"
 
 
 def test_complete_phase_transitions_in_progress_to_completed(tmp_path: Path) -> None:
@@ -138,7 +140,9 @@ def test_complete_phase_rejects_non_in_progress(tmp_path: Path) -> None:
     state = _new_state(tmp_path)
     with pytest.raises(PipelineError) as exc:
         complete_phase(state, "discover_context")
-    assert exc.value.envelope["error"]["current_status"] == "pending"
+    err = exc.value.envelope["error"]
+    assert isinstance(err, dict)
+    assert err["current_status"] == "pending"
 
 
 def test_fail_phase_sets_error_and_run_failed(tmp_path: Path) -> None:
@@ -157,7 +161,9 @@ def test_fail_phase_rejects_non_in_progress(tmp_path: Path) -> None:
     state = _new_state(tmp_path)
     with pytest.raises(PipelineError) as exc:
         fail_phase(state, "discover_context", "boom")
-    assert exc.value.envelope["error"]["current_status"] == "pending"
+    err = exc.value.envelope["error"]
+    assert isinstance(err, dict)
+    assert err["current_status"] == "pending"
 
 
 def test_skip_phase_transitions_pending_to_skipped(tmp_path: Path) -> None:
@@ -171,7 +177,9 @@ def test_skip_phase_rejects_non_pending(tmp_path: Path) -> None:
     start_phase(state, "discover_context")
     with pytest.raises(PipelineError) as exc:
         skip_phase(state, "discover_context")
-    assert exc.value.envelope["error"]["current_status"] == "in_progress"
+    err = exc.value.envelope["error"]
+    assert isinstance(err, dict)
+    assert err["current_status"] == "in_progress"
 
 
 def test_retry_phase_resets_failed_to_pending(tmp_path: Path) -> None:
@@ -193,4 +201,6 @@ def test_retry_phase_rejects_non_failed(tmp_path: Path) -> None:
     state = _new_state(tmp_path)
     with pytest.raises(PipelineError) as exc:
         retry_phase(state, "discover_context")
-    assert exc.value.envelope["error"]["current_status"] == "pending"
+    err = exc.value.envelope["error"]
+    assert isinstance(err, dict)
+    assert err["current_status"] == "pending"

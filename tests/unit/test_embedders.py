@@ -4,8 +4,9 @@ import types
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 
-from profile_project.config.settings import Settings
+from profile_project.config.settings import EmbeddingsSettings, Settings
 from profile_project.vectorstore.embedders import (
     OPENAI_BATCH_CAP,
     OPENAI_NO_DIMENSIONS_MODELS,
@@ -58,7 +59,7 @@ def _patch_sentence_transformers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     module = types.ModuleType("sentence_transformers")
     module.SentenceTransformer = _FakeSTModel  # type: ignore[attr-defined]
-    module.__spec__ = importlib.machinery.ModuleSpec(  # type: ignore[attr-defined]
+    module.__spec__ = importlib.machinery.ModuleSpec(
         "sentence_transformers", None
     )
     monkeypatch.setitem(sys.modules, "sentence_transformers", module)
@@ -145,7 +146,7 @@ def _patch_openai(monkeypatch: pytest.MonkeyPatch) -> None:
 
     module = types.ModuleType("openai")
     module.OpenAI = _FakeOpenAIClient  # type: ignore[attr-defined]
-    module.__spec__ = importlib.machinery.ModuleSpec(  # type: ignore[attr-defined]
+    module.__spec__ = importlib.machinery.ModuleSpec(
         "openai", None
     )
     monkeypatch.setitem(sys.modules, "openai", module)
@@ -289,7 +290,9 @@ def test_ollama_probe_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_build_embedder_dispatches_sentence_transformers(
     _patch_sentence_transformers: None,
 ) -> None:
-    settings = Settings(embeddings={"method": "sentence-transformers"})
+    settings = Settings(
+        embeddings=EmbeddingsSettings(method="sentence-transformers")
+    )
     emb = build_embedder(settings)
     assert isinstance(emb, SentenceTransformerEmbedder)
     assert emb.model_name == "all-MiniLM-L6-v2"
@@ -297,8 +300,8 @@ def test_build_embedder_dispatches_sentence_transformers(
 
 def test_build_embedder_dispatches_openai(_patch_openai: None) -> None:
     settings = Settings(
-        embeddings={"method": "openai"},
-        openai_api_key="sk-live",
+        embeddings=EmbeddingsSettings(method="openai"),
+        openai_api_key=SecretStr("sk-live"),
     )
     emb = build_embedder(settings)
     assert isinstance(emb, OpenAIEmbedder)
@@ -308,7 +311,7 @@ def test_build_embedder_dispatches_openai(_patch_openai: None) -> None:
 
 def test_build_embedder_dispatches_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_httpx(monkeypatch)
-    settings = Settings(embeddings={"method": "ollama"})
+    settings = Settings(embeddings=EmbeddingsSettings(method="ollama"))
     emb = build_embedder(settings)
     assert isinstance(emb, OllamaEmbedder)
     assert emb.model_name == "qwen3-embedding:8b"
@@ -322,12 +325,14 @@ def test_build_embedder_missing_extra_raises_embedder_extra_missing(
     # Force the lazy `import sentence_transformers` inside the embedder to fail,
     # as it would when the [local-embeddings] extra is not installed.
     monkeypatch.setitem(sys.modules, "sentence_transformers", None)
-    settings = Settings(embeddings={"method": "sentence-transformers"})
+    settings = Settings(
+        embeddings=EmbeddingsSettings(method="sentence-transformers")
+    )
     with pytest.raises(EmbedderExtraMissing, match="local-embeddings"):
         build_embedder(settings)
 
 
 def test_build_embedder_rejects_disabled() -> None:
-    settings = Settings(embeddings={"method": "disabled"})
+    settings = Settings(embeddings=EmbeddingsSettings(method="disabled"))
     with pytest.raises(ValueError, match="disabled"):
         build_embedder(settings)

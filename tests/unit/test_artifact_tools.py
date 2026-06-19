@@ -61,7 +61,9 @@ def test_pp_store_artifact_gated_pre_init(project: Path) -> None:
         "r1", "discover_context", "source-index", _SOURCE_INDEX
     )
     assert result["ok"] is False
-    assert result["error"]["code"] == "not_initialized"
+    err = result["error"]
+    assert isinstance(err, dict)
+    assert err["code"] == "not_initialized"
     assert not (project / ".profile_project").exists()
 
 
@@ -78,12 +80,18 @@ def test_pp_store_artifact_writes_and_registers_post_init(project: Path) -> None
         run_id, "discover_context", "source-index", _SOURCE_INDEX
     )
     assert stored["ok"] is True
-    assert stored["artifact_ref"]["type"] == "source-index"
+    artifact_ref = stored["artifact_ref"]
+    assert isinstance(artifact_ref, dict)
+    assert artifact_ref["type"] == "source-index"
     assert (
         project / ".profile_project" / "artifacts" / "source-index.json"
     ).exists()
 
     loaded = artifact_tools.pp_load_artifact("source-index", run_id=run_id)
-    assert loaded["artifact"]["artifact_type"] == "source-index"
+    artifact = loaded["artifact"]
+    assert isinstance(artifact, dict)
+    assert artifact["artifact_type"] == "source-index"
     listed = artifact_tools.pp_list_artifacts(run_id=run_id)
-    assert any(a["type"] == "source-index" for a in listed["artifacts"])
+    artifacts = listed["artifacts"]
+    assert isinstance(artifacts, list)
+    assert any(isinstance(a, dict) and a["type"] == "source-index" for a in artifacts)

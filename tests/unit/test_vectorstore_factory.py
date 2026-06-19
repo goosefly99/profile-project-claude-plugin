@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import SecretStr
 
-from profile_project.config.settings import Settings, VectorStoreSettings
+from profile_project.config.settings import (
+    EmbeddingsSettings,
+    PineconeSettings,
+    Settings,
+    VectorStoreSettings,
+)
 from profile_project.vectorstore.factory import build_backend, build_store
 
 
@@ -21,6 +28,10 @@ class _FakeEmbedder:
     @property
     def embedder_version(self) -> str:
         return "sentence-transformers/all-MiniLM-L6-v2@hf-fp32"
+
+    @property
+    def embedding_provider(self) -> str:
+        return "sentence-transformers"
 
     def probe_dimension(self) -> int:
         return 384
@@ -40,7 +51,7 @@ def test_build_store_dispatches_to_chromadb(monkeypatch: pytest.MonkeyPatch) -> 
     s = Settings(vectorstore=VectorStoreSettings(backend="chromadb", enabled=True))
     store = build_store(s, _FakeEmbedder())
     assert store is made.return_value
-    kwargs: dict[str, Any] = made.call_args.kwargs
+    kwargs: Mapping[str, Any] = made.call_args.kwargs
     assert kwargs["collection"] == "profile-project"
     assert kwargs["persist_path"] == ".profile_project/chroma"
 
@@ -56,17 +67,17 @@ def test_build_store_dispatches_to_pinecone_with_effective_dim(
         vectorstore=VectorStoreSettings(
             backend="pinecone",
             enabled=True,
-            pinecone={
-                "index": "my-index",
-                "namespace": "profile-v1",
-                "embeddings_model": "text-embedding-3-small",
-            },
+            pinecone=PineconeSettings(
+                index="my-index",
+                namespace="profile-v1",
+                embeddings_model="text-embedding-3-small",
+            ),
         ),
-        pinecone_api_key="pk-123",
+        pinecone_api_key=SecretStr("pk-123"),
     )
     store = build_store(s, _FakeEmbedder())
     assert store is made.return_value
-    kwargs: dict[str, Any] = made.call_args.kwargs
+    kwargs: Mapping[str, Any] = made.call_args.kwargs
     assert kwargs["index"] == "my-index"
     assert kwargs["namespace"] == "profile-v1"
     assert kwargs["api_key"] == "pk-123"
@@ -93,7 +104,7 @@ def test_build_backend_returns_none_on_conflict_disable(
     monkeypatch.delenv("PROFILE_PROJECT_OPENAI_API_KEY", raising=False)
     s = Settings(
         vectorstore=VectorStoreSettings(backend="chromadb", enabled=True),
-        embeddings={"method": "openai"},
+        embeddings=EmbeddingsSettings(method="openai"),
     )
     assert build_backend(s) is None
 
